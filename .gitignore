@@ -2,3 +2,5 @@
 /.holdfast/
 /test/fixture/clinic/.holdfast/
 /test/fixture/clinic/spec/holdfast/
+test/fixture/clinic/log/
+test/fixture/clinic/tmp/
