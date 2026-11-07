@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - queue
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Ruby ${{ matrix.ruby }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # hegeltest needs Ruby 3.4, so 3.4 is the floor.
+        ruby: ["3.4", "4.0"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      # The tests copy the fixture to a temporary directory and run it with
+      # its own Gemfile, so its gems and hegeltest go to the system gems,
+      # where a bundle outside this checkout finds them.
+      BUNDLE_PATH__SYSTEM: "true"
+      HOLDFAST_PG: required
+    # Actions are pinned to a commit. A tag can be moved to another commit,
+    # so a tag reference says which version its owner offers today rather
+    # than which code this workflow ran last time.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler: Gemfile.lock
+      - name: Install the gems
+        run: |
+          bundle install
+          bundle install --gemfile test/fixture/clinic/Gemfile
+      - name: Run the tests
+        run: ruby -Ilib test/run.rb
+      - name: Build the gem
+        run: gem build holdfast.gemspec
