@@ -31,7 +31,10 @@ module Holdfast
       git(root, "add", "-A", env:)
       git(root, "rm", "-r", "--cached", "--quiet", "--ignore-unmatch", ".holdfast", env:)
       tree = git(root, "write-tree", env:)
-      git(root, "commit-tree", tree, "-p", "HEAD", "-m", "holdfast: working tree", env:)
+      # The commit stays private to this run, so it needs no identity from the user and must not fail without one.
+      who = { "GIT_AUTHOR_NAME" => "holdfast", "GIT_AUTHOR_EMAIL" => "holdfast@localhost",
+              "GIT_COMMITTER_NAME" => "holdfast", "GIT_COMMITTER_EMAIL" => "holdfast@localhost" }
+      git(root, "commit-tree", tree, "-p", "HEAD", "-m", "holdfast: working tree", env: env.merge(who))
     ensure
       FileUtils.rm_rf(File.dirname(index)) if index
     end
