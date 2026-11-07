@@ -1,0 +1,4 @@
+/*.gem
+/.holdfast/
+/test/fixture/clinic/.holdfast/
+/test/fixture/clinic/spec/holdfast/

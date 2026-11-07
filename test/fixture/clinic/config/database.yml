@@ -1,0 +1,7 @@
+test:
+  adapter: postgresql
+  encoding: unicode
+  host: <%= ENV.fetch("DB_HOST", "localhost") %>
+  port: <%= ENV.fetch("DB_PORT", 5432) %>
+  username: <%= ENV.fetch("DB_USER", "postgres") %>
+  database: clinic_test<%= ENV["TEST_ENV_NUMBER"] %>
