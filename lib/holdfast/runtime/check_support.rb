@@ -537,7 +537,7 @@ module HoldfastCheck
     absent = HoldfastCheck.absent(e) unless app
     raise CouldNotRun.new("do", "`#{act.text}` raised #{e.class}: #{e.message.lines.first.to_s.strip}", absent:) if absent || !(errors || app)
 
-    { error: e, scope:, shown: "#{act.text} raised #{e.class}: #{e.message.lines.first.to_s.strip[0, 120]}" }
+    { error: e, scope:, shown: "#{act.text.strip.gsub(/\s*\n\s*/, "; ")} raised #{e.class}: #{e.message.lines.first.to_s.strip[0, 300]}" }
   end
 
   CALL_SHAPE = /wrong number of arguments|missing keyword|unknown keyword/
@@ -648,7 +648,7 @@ module HoldfastCheck
     when Hash then value.inspect[0, 160]
     when nil, true, false, Numeric, Symbol then value.inspect
     when String then value.inspect[0, 160]
-    when Exception then "#{value.class}: #{value.message.lines.first.to_s.strip[0, 120]}"
+    when Exception then "#{value.class}: #{value.message.lines.first.to_s.strip[0, 300]}"
     else value.inspect.then { _1.size <= 160 && !_1.start_with?("#<") ? _1 : value.class.name }
     end
   end
