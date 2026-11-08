@@ -58,6 +58,7 @@ module Propose
   end
 
   # Guessed draws for an untyped numeric param, marked in the draft.
+  PERCENTS = [0, 50, 100, 101, -1].freeze
   COUNTS = { /minutes|duration/ => [0, 15, 30, 60, 120, 240, 600], /size|count|attendees|seats|quantity|number|days/ => [0, 1, 2, 4, 12, -1],
              /amount|price|total|fee|cost/ => ["0", "1", "12.50", "100", "-5", "0.01"] }.freeze
 
@@ -328,6 +329,12 @@ module Propose
     end
     foreign = model&.reflect_on_all_associations(:belongs_to)&.any? { it.foreign_key.to_s == key.to_s }
     return value_for(key, nil, params) if foreign
+    # A percentage is drawn at and past its ends: 0..5 never asks whether
+    # 101 percent off is refused.
+    if col && %i[integer decimal float].include?(col.type) && key.to_s.include?("percent")
+      params[key.to_sym] = PERCENTS
+      return "#{key}:"
+    end
     if col&.type == :integer && col.null
       params[key.to_sym] = [nil, 0, 1, 2, 5]
       return "#{key}:"
@@ -1269,7 +1276,36 @@ end
     end
   end
 
-  def drafted_invariants = money_invariants + order_invariants + one_child_invariants
+  # Bounds a column name states: what is left never goes below zero, a
+  # count never passes its max, and a percentage stays within 0..100.
+  def bound_invariants
+    models.flat_map do |model|
+      cols = model.columns.select { %i[integer decimal float].include?(it.type) }.map(&:name)
+      plural = model.model_name.plural
+      rules = cols.grep(/(\A|_)(left|remaining)\z/).map do |col|
+        ["#{plural}_#{col}_not_negative", "#{col} is never below zero", "#{model.name}.where(\"#{col} < 0\")"]
+      end
+      rules += cols.grep(/\Amax_(\w+)\z/).filter_map do |max|
+        stem = max.delete_prefix("max_")
+        count = cols.find { it == "#{stem}_count" } or next
+        ["#{plural}_#{count}_within_#{max}", "#{count} never passes #{max}", "#{model.name}.where(\"#{max} IS NOT NULL AND #{count} > #{max}\")"]
+      end
+      rules += cols.grep(/percent/).map do |col|
+        ["#{plural}_#{col}_within_0_100", "#{col} stays within 0..100", "#{model.name}.where(\"#{col} < 0 OR #{col} > 100\")"]
+      end
+      rules.map do |name, says, query|
+        <<~RUBY.chomp
+          # drafted, check it is a real rule: #{model.name}##{says}.
+          invariant(:#{name}) do
+            bad = #{query}.pluck(:id)
+            bad.empty? || "#{plural} \#{bad} break the rule: #{says}"
+          end
+        RUBY
+      end
+    end
+  end
+
+  def drafted_invariants = money_invariants + order_invariants + one_child_invariants + bound_invariants
 
   # The drafted rules are live; the TODOs ask for the rest. A run with no
   # invariants still checks errors, 5xx, zones, offsets and doors.
