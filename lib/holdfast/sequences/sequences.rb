@@ -1116,7 +1116,14 @@ end
     actions = definition.actions.values
     walks.times do
       runner = Runner.new(definition)
-      with_zone("UTC") { runner.reset!(draw: RandomDraw.new(random)) }
+      # A world whose drafted records collide is drawn again, as a case is.
+      begin
+        with_zone("UTC") { runner.reset!(draw: RandomDraw.new(random)) }
+      rescue SetupError => e
+        raise unless collision?(e)
+
+        next
+      end
       steps.times do
         if definition.clock_start && random.rand(5).zero?
           runner.tick(zone: random.rand(ZONES_FOR_DAY_EDGES.size), days: random.rand(0..20), time: random.rand(BOUNDARY_TIMES.size), stored: nil)

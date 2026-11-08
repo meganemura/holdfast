@@ -58,7 +58,8 @@ module Propose
   end
 
   # Guessed draws for an untyped numeric param, marked in the draft.
-  COUNTS = { /minutes|duration/ => [0, 15, 30, 60, 120, 240, 600], /size|count|attendees|seats|quantity|number|days/ => [0, 1, 2, 4, 12, -1] }.freeze
+  COUNTS = { /minutes|duration/ => [0, 15, 30, 60, 120, 240, 600], /size|count|attendees|seats|quantity|number|days/ => [0, 1, 2, 4, 12, -1],
+             /amount|price|total|fee|cost/ => ["0", "1", "12.50", "100", "-5", "0.01"] }.freeze
 
   def models
     @models ||= ActiveRecord::Base.descendants.reject { it.abstract_class? || it.name.nil? }.select(&:table_exists?)
@@ -510,7 +511,9 @@ module Propose
       lookups = chunks.flat_map do |chunk|
         locals = chunk.scan(/^\s*(\w+)\s*=\s*[^=\n]*headers\["([^"]+)"\]/).to_h
         bearer = chunk.include?("Bearer")
-        chunk.scan(/([A-Z]\w*)(?:\.where\(([^)]*)\))?\.find_by!?\(([^)]*)\)/).filter_map do |model, where, args|
+        # A scope may stand between the model and the lookup (`StaffMember.active.find_by`).
+        chunk.scan(/([A-Z]\w*)((?:\.\w+(?:\([^)]*\))?)*?)\.find_by!?\(([^)]*)\)/).filter_map do |model, chain, args|
+          where = chain[/\.where\(([^)]*)\)/, 1]
           pairs = "#{where}, #{args}".scan(/(\w+):\s*([^,]+)/)
           header, column = pairs.filter_map { |col, expr| (h = expr[/headers\["([^"]+)"\]/, 1] || locals[expr.strip] || readers[expr.strip[/\A(\w+)/, 1]]&.first) && [h, col] }.first
           next unless header
@@ -629,14 +632,19 @@ module Propose
       # The action writes the key itself, or through a helper (`sign_in(staff)`).
       text = reads_through(controller, action)
       key = text[/session\[:(\w+)\]\s*=[^=]/, 1] or next
-      line = text.lines.find { it.match?(/[A-Z]\w*(?:\.where\([^)]*\))?\.find_by!?\(/) }
-      model = line && line[/([A-Z]\w*)(?:\.where\([^)]*\))?\.find_by/, 1].safe_constantize
+      # A scope may stand between the model and the lookup (`StaffMember.active.find_by`).
+      line = text.lines.find { it.match?(/[A-Z]\w*(?:\.\w+(?:\([^)]*\))?)*?\.find_by!?\(/) }
+      model = line && line[/([A-Z]\w*)(?:\.\w+(?:\([^)]*\))?)*?\.find_by/, 1].safe_constantize
       literal = line ? line.scan(/(\w+):\s*("[^"]*"|\d+)/).to_h : {}
       # A param a lookup column reads (`email: params[:email]`) gets a known
       # value the setup gives the record too.
       by_param = line ? line.scan(/(\w+):\s*params(?:\[:|\.(?:require|fetch)\(:)(\w+)/).to_h { |col, k| [k.to_sym, col] } : {}
+      # The secret is checked by `authenticate(params[:password])` or by a
+      # predicate of the record's own (`staff.pin_matches?(params[:pin])`);
+      # the setup gives the record that secret through its writer.
       password = text[/authenticate\(params(?:\[:|\.(?:require|fetch)\(:)(\w+)/, 1]&.to_sym
-      password = nil unless model&.method_defined?(:password=)
+      secret = password ? :password : (password = text[/\.\w+\?\(params(?:\[:|\.(?:require|fetch)\(:)(\w+)/, 1]&.to_sym)
+      password = nil unless model&.method_defined?(:"#{secret}=")
       known = by_param.to_h { |k, col| [k, col.include?("email") ? "desk@sequences.test" : "sequences-#{col.tr("_", "-")}"] }
       auth = controller_auth(controller)
       found = model ? model.where(literal.transform_values { it.delete('"') }) : nil
@@ -651,7 +659,7 @@ module Propose
         end
       end
       factory = model && factories.find { it.build_class == model && it.name.to_s == model.model_name.singular }
-      attrs = literal.map { "#{_1}: #{_2}" } + by_param.map { |k, col| "#{col}: #{known[k].inspect}" } + (password ? ["password: #{DESK_PASSWORD.inspect}"] : [])
+      attrs = literal.map { "#{_1}: #{_2}" } + by_param.map { |k, col| "#{col}: #{known[k].inspect}" } + (password ? ["#{secret}: #{DESK_PASSWORD.inspect}"] : [])
       setup = factory && attrs.any? ? "create(:#{factory.name}, #{attrs.join(", ")})" : nil
       { key:, action:, controller: route.defaults[:controller], path: route.path.spec.to_s.sub("(.:format)", ""), body:, setup:, found: found&.to_sql }
     end.first
@@ -669,9 +677,23 @@ module Propose
     names = factories.map(&:name)
     decls = factory.definition.declarations.to_a
     assocs = decls.select { names.include?(it.name) || it.is_a?(FactoryBot::Declaration::Association) }
-    return nil if assocs.any? { !it.is_a?(FactoryBot::Declaration::Implicit) && !plain_association?(it) }
+    derived = assocs.reject { it.is_a?(FactoryBot::Declaration::Implicit) || plain_association?(it) }
+    return nil if derived.any? { encodes_state?(it) }
 
-    assocs.map(&:name)
+    # A parent the factory makes with an identity of its own (a staff
+    # member whose role is "practitioner") is left to the factory.
+    (assocs - derived).map(&:name)
+  end
+
+  def encodes_state?(decl)
+    text = case decl
+           when FactoryBot::Declaration::Association then decl.instance_variable_get(:@overrides).keys.join(" ") + " " + decl.instance_variable_get(:@traits).join(" ")
+           when FactoryBot::Declaration::Dynamic
+             file, line = decl.instance_variable_get(:@block)&.source_location
+             file && File.file?(file) ? File.readlines(file)[line - 1].to_s : "status"
+           else "status"
+           end
+    text.match?(/status|state/)
   end
 
   # `branch { association :branch }` and `association :branch` name the
@@ -765,7 +787,12 @@ module Propose
   # partial index still forbids two rows its condition selects, and the
   # factory's defaults usually meet that condition.
   def conn_unique_columns(model)
-    ActiveRecord::Base.connection.indexes(model.table_name).select { it.unique && Array(it.columns).size == 1 }.map { Array(it.columns).first }
+    indexes = ActiveRecord::Base.connection.indexes(model.table_name).select(&:unique)
+    alone = indexes.select { Array(it.columns).size == 1 }.map { Array(it.columns).first }
+    # One parent with a day or a kind (`member_id, visited_on`): the factory
+    # gives every record the same day, so each parent is used once.
+    shared = indexes.filter_map { |i| ids = Array(i.columns).grep(/_id\z/); ids.first if Array(i.columns).size > 1 && ids.one? }
+    (alone + shared).uniq
   end
 
   # A time column a unique index or an exclusion constraint holds (one start
@@ -777,6 +804,10 @@ module Propose
     held = conn.indexes(model.table_name).select(&:unique).flat_map { Array(it.columns) }
     held += conn.exclusion_constraints(model.table_name).flat_map { it.expression.scan(/\w+/) } if conn.respond_to?(:exclusion_constraints)
     times = model.columns.select { %i[datetime timestamp].include?(it.type) && held.include?(it.name) }
+    # An end held with its start is left to the factory, which derives it
+    # from the start (`starts_at + service.duration`); the same hour for both
+    # makes an empty slot.
+    times = times.reject { it.name.match?(/\A(.*_)?(ends?|finish(es)?|until|to)_at\z/) } if times.size > 1
     times.map { "#{it.name}: Time.current.beginning_of_hour + (i + 1).hours" }
   end
 
@@ -793,10 +824,11 @@ module Propose
     end.uniq - copied_from(selected)
   end
 
-  # A table an action copies a value from (`guest_email_from: :guest_passes`)
+  # A table an action draws a record or a value from (`practitioner:
+  # :practitioners`, `guest_email_from: :guest_passes`)
   # is made in the setup even when the area inserts into it: an empty pool
   # leaves the action never drawn.
-  def copied_from(selected) = selected.flat_map { |d| d.params.select { |k, v| k.to_s.end_with?("_from") && v.is_a?(Symbol) }.values.map(&:to_s) }.uniq
+  def copied_from(selected) = selected.flat_map { |d| d.params.values.grep(Symbol).map(&:to_s) }.uniq
 
   def pool_tables(selected) = selected.flat_map { it.params.values }.grep(Symbol).map(&:to_s)
 
