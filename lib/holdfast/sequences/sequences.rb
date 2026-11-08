@@ -213,7 +213,10 @@ def self.[](name) = registry.fetch(name)
         raise
       rescue StandardError => e
         where = caller_locations.find { it.path.start_with?(Rails.root.to_s) && !it.path.start_with?(__dir__) && !it.path.include?("/spec/support/") }
-        call = (args.map(&:inspect) + kw.map { |k, v| "#{k}: #{v.inspect}" }).join(", ")
+        # A record's whole inspect pushed the error itself off the one line a
+        # report shows, so a record is named by its class and id.
+        show = ->(v) { v.is_a?(ActiveRecord::Base) ? "#<#{v.class.name} #{v.id || "new"}>" : v.inspect }
+        call = (args.map(&show) + kw.map { |k, v| "#{k}: #{show.(v)}" }).join(", ")
         raise SetupError, "#{factory_call}(#{call}) at #{where&.path&.sub("#{Rails.root}/", "")}:#{where&.lineno} failed: #{e.class}: #{e.message}"
       end
     end

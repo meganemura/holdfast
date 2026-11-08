@@ -549,7 +549,7 @@ module Propose
         next if assocs.any? && inserted.include?(model.table_name)
 
         var = factory.name.to_s.pluralize
-        limits = capacity_args(model) + distinct_times(model)
+        limits = capacity_args(model, factory) + distinct_times(model)
         if assocs.empty? && limits.empty?
           lines << "#{var} = create_list(:#{factory.name}, world_size(:#{var}, #{root_sizes(factory)}))"
         else
@@ -561,9 +561,15 @@ module Propose
             stride = assocs[0...i].map { "#{it.to_s.pluralize}.size" }.join(" * ").presence || "1"
             "#{a}: #{a.to_s.pluralize}[i / (#{stride}) % #{a.to_s.pluralize}.size]"
           end
+          # A parent a unique index holds to one child (one open membership
+          # per member) is used once: each child takes the next parent, and
+          # there are no more children than parents.
+          held = conn_unique_columns(model)
+          once = assocs.select { held.include?(model.reflect_on_association(it)&.foreign_key.to_s) }
+          once.each { |a| picks[assocs.index(a)] = "#{a}: #{a.to_s.pluralize}[i]" }
           range = assocs.empty? ? root_sizes(factory) : "1..#{most}"
           count = "world_size(:#{var}, #{range})"
-          count = "[#{count}, #{assocs.map { "#{it.to_s.pluralize}.size" }.join(" * ")}].min" if assocs.any?
+          count = "[#{count}, #{(once.any? ? once : assocs).map { "#{it.to_s.pluralize}.size" }.join(once.any? ? ", " : " * ")}].min" if assocs.any?
           lines << "#{var} = Array.new(#{count}) { |i| create(:#{factory.name}, #{(picks + limits).join(", ")}) }"
         end
         # The largest each can be: a child pairs with every parent up to it.
@@ -578,9 +584,20 @@ module Propose
   def root_sizes(factory) = factory.name == :member ? (2..8) : (1..3)
 
   # A capacity column (seats, capacity, a limit) drawn 1 to 3 per record.
-  def capacity_args(model)
+  # A capacity column some records must leave blank (seats only on a team
+  # plan) would make every drafted record invalid, so it is drawn only when
+  # the factory's record stays valid with it set.
+  def capacity_args(model, factory)
     model.columns.select { it.type == :integer && it.name.match?(/capacity|seats|limit|\Amax_|slots|quota/) }
+         .select { |col| (FactoryBot.build(factory.name, col.name => 1).valid? rescue true) }
          .map { "#{it.name}: world_size(:\"#{model.model_name.plural}.#{it.name}\", 1..3)" }
+  end
+
+  # The columns a unique index holds alone, partial ones included: a
+  # partial index still forbids two rows its condition selects, and the
+  # factory's defaults usually meet that condition.
+  def conn_unique_columns(model)
+    ActiveRecord::Base.connection.indexes(model.table_name).select { it.unique && Array(it.columns).size == 1 }.map { Array(it.columns).first }
   end
 
   # A time column a unique index or an exclusion constraint holds (one start
