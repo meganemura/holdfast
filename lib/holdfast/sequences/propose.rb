@@ -69,8 +69,22 @@ module Propose
   def controller_params(controller, action)
     file = controller.instance_method(action).source_location&.first or return {}
     found = {}
+    nest = lambda do |key, attrs|
+      found[key] = [:nested, ((found[key]&.first == :nested ? found[key].last : []) + attrs).uniq]
+    end
     walk = lambda do |node, stack|
-      if node.is_a?(Prism::CallNode) && node.receiver.is_a?(Prism::CallNode) && node.receiver.name == :params &&
+      # Rails 8's `params.expect(membership: [:plan_id])` and
+      # `params.dig(:membership, :starts_on)` read a nested form too.
+      if node.is_a?(Prism::CallNode) && node.receiver.is_a?(Prism::CallNode) && node.receiver.name == :params && node.name == :expect
+        Array(node.arguments&.arguments).grep(Prism::KeywordHashNode).flat_map(&:elements).each do |pair|
+          next unless pair.key.is_a?(Prism::SymbolNode) && pair.value.is_a?(Prism::ArrayNode)
+
+          nest.(pair.key.unescaped.to_sym, pair.value.elements.grep(Prism::SymbolNode).map { it.unescaped.to_sym })
+        end
+      elsif node.is_a?(Prism::CallNode) && node.receiver.is_a?(Prism::CallNode) && node.receiver.name == :params && node.name == :dig &&
+            (keys = Array(node.arguments&.arguments)).size == 2 && keys.all?(Prism::SymbolNode)
+        nest.(keys.first.unescaped.to_sym, [keys.last.unescaped.to_sym])
+      elsif node.is_a?(Prism::CallNode) && node.receiver.is_a?(Prism::CallNode) && node.receiver.name == :params &&
          %i[require [] fetch].include?(node.name) && node.arguments&.arguments&.first.is_a?(Prism::SymbolNode)
         key = node.arguments.arguments.first.unescaped.to_sym
         at = stack.rindex { it.is_a?(Prism::CallNode) && %i[find find_by find_by!].include?(it.name) && it.receiver.is_a?(Prism::ConstantReadNode) }
@@ -89,7 +103,45 @@ module Propose
       end
       node.compact_child_nodes.each { walk.(it, stack + [node]) }
     end
-    Prism.parse_file(file).value.breadth_first_search { it.is_a?(Prism::DefNode) && it.name == action.to_sym }&.then { walk.(it, []) }
+    tree = Prism.parse_file(file).value
+    defn = tree.breadth_first_search { it.is_a?(Prism::DefNode) && it.name == action.to_sym }
+    defn&.then { walk.(it, []) }
+    # The usual `member_params` helper holds the form's keys, so a method of
+    # the same file the action calls with no receiver is read too.
+    if defn
+      called = []
+      stack = [defn]
+      while (n = stack.pop)
+        called << n.name if n.is_a?(Prism::CallNode) && n.receiver.nil? && n.arguments.nil?
+        stack.concat(n.compact_child_nodes)
+      end
+      called.uniq.each do |name|
+        next if name == action.to_sym
+
+        tree.breadth_first_search { it.is_a?(Prism::DefNode) && it.name == name && it.receiver.nil? }&.then { walk.(it, []) }
+      end
+    end
+    # `file = params[:file]` and then `file.read`: the local is the upload.
+    if defn
+      locals = {}
+      seen = []
+      stack = [defn]
+      while (n = stack.pop)
+        seen << n
+        stack.concat(n.compact_child_nodes)
+      end
+      seen.grep(Prism::LocalVariableWriteNode).each do |w|
+        v = w.value
+        next unless v.is_a?(Prism::CallNode) && v.receiver.is_a?(Prism::CallNode) && v.receiver.name == :params && v.arguments&.arguments&.first.is_a?(Prism::SymbolNode)
+
+        locals[w.name] = v.arguments.arguments.first.unescaped.to_sym
+      end
+      seen.grep(Prism::CallNode).each do |c|
+        next unless %i[read original_filename path].include?(c.name) && c.receiver.is_a?(Prism::LocalVariableReadNode) && (key = locals[c.receiver.name])
+
+        found[key] = [:upload]
+      end
+    end
     found
   end
 
@@ -198,8 +250,9 @@ module Propose
         if kind == :nested
           "#{key}: { #{attribute.map { value_for(it, nil, params) }.join(", ")} }"
         elsif kind == :upload
-          params[key] = :TODO
-          "#{key}:"
+          # Drawn text sent as a file, so the action runs past its upload.
+          params[key] = :text
+          %(#{key}: Rack::Test::UploadedFile.new(StringIO.new(#{key}.to_s), "text/plain", original_filename: "#{key}.txt"))
         elsif kind.is_a?(Class)
           var = kind.model_name.singular.to_sym
           var = key.to_s.delete_suffix("_id").to_sym if params.key?(var)

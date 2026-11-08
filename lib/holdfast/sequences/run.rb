@@ -114,7 +114,7 @@ def verdict(r, limit)
     return ["clean", "#{done}/#{total}", "clean: #{runs}"] if missing.empty?
 
     ["partly checked", "#{done}/#{total}", "partly checked: #{runs}; not covered:\n#{missing.map { "    - #{it}" }.join("\n")}"]
-  when "failure" then ["FAILURE", "#{done}/#{total}", "FAILURE: #{rep["reason"].lines.first.strip}"]
+  when "failure" then ["FAILURE", "#{done}/#{total}", "FAILURE: #{rep["reason"].to_s.lines.first.to_s.strip}"]
   else ["unchecked", "#{done}/#{total}", "unchecked: #{rep["reason"].to_s.lines.first.to_s.strip}"]
   end
 end

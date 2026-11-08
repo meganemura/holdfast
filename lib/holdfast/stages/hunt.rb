@@ -135,6 +135,13 @@ module Holdfast
           found = at ? logged[at + 1] : logged.find { _1.match?(/ raised |invariant \w+ broken|differ|disagree/) && !_1.start_with?("#", "1)") }
           reason = found ? found.sub(/\A.*?in '[^']+': /, "").sub(/ \(Sequences::Failure\)\z/, "") : lines.first.delete_prefix("FAILURE: ")
           short = reason.size > 300 ? "#{reason[0, 300]}... (whole text in evidence)" : reason
+          # An error raised in holdfast's own code, not the app's, says nothing
+          # about the app: report it as holdfast's, with where it was raised.
+          frame = logged.find { _1.start_with?("# /") }
+          if at.nil? && frame&.include?(File.expand_path("..", __dir__))
+            return row(area, "unchecked", "holdfast failed while hunting here: #{short}", ["at: #{frame.delete_prefix("# ")}", "log: #{log}"],
+                       "report it to holdfast with the log; the hunt checked nothing in this area", scope:)
+          end
           # Broken before any action ran, the world the setup drafted already
           # breaks the rule: the setup or the drafted rule is wrong, not the app.
           if (rule = reason[/invariant (\w+) broken after setup/, 1])

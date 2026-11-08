@@ -16,8 +16,10 @@ module Sequences
       super(message)
     end
 
+    # The log quotes request params and response text, which can arrive as
+    # binary; a message that raises on its own encoding hides the failure.
     def message
-      "#{super}\n\n#{Report.narrative(@log)}\n\n#{Report.pasteable(@definition, @log)}"
+      [super, Report.narrative(@log), Report.pasteable(@definition, @log)].map { _1.to_s.dup.force_encoding(Encoding::UTF_8).scrub }.join("\n\n")
     end
   end
 
@@ -204,6 +206,7 @@ def self.[](name) = registry.fetch(name)
     end
 
     def records(pool) = @definition.pools.fetch(pool).call.to_a
+    def pool?(name) = @definition.pools.key?(name)
 
     # A factory call that fails in `setup` names itself and its line.
     %i[create create_list build].each do |factory_call|
@@ -392,10 +395,23 @@ end
           Sequences.tally(:"#{first_name} = #{second_name}", "refused: turned away")
           next
         end
+        # A column only one door takes a param for (the desk's notes) is
+        # that door's own, so the pair compares the columns both can set. An
+        # option only one door names (the desk's `when`, the API's `now`)
+        # cannot be given the same value on both, so the pair compares nothing.
+        a_keys, b_keys = first.params.keys.map(&:to_s), second.params.keys.map(&:to_s)
+        unmatched = ((a_keys - b_keys) | (b_keys - a_keys))
+        columns = ActiveRecord::Base.connection.columns(table.to_s).map(&:name)
+        options = unmatched.reject { |k| columns.include?(k) || [first, second].any? { |a| (spec = a.params[k.to_sym]).is_a?(Symbol) && @ctx.pool?(spec) } }
+        if options.any?
+          Sequences.tally(:"#{first_name} = #{second_name}", "refused: option on one door only (#{options.join(", ")})")
+          next
+        end
         Sequences.tally(:"#{first_name} = #{second_name}", one[:accepted] || two[:accepted] ? "ok" : "refused: both")
         # Rows only: a desk can answer a refusal with a notice where the API
         # answers 409, and both wrote nothing.
-        compare!("two doors to #{table} disagree", one, two, first_name, second_name, outcome: false)
+        own = unmatched.to_set { "#{table}.#{it}" }
+        compare!("two doors to #{table} disagree", one, two, first_name, second_name, outcome: false, noise: own)
       end
       check_invariants("after #{first_name} = #{second_name}")
     end
@@ -420,7 +436,8 @@ end
         end
         from = first.params[key] == spec ? key : (first.params.select { |_, s| s == spec && s.is_a?(Symbol) }.keys.then { it.one? ? it.first : nil })
         next [key, first_choice[from]] if from
-        next [key, fresh[key]] unless spec.is_a?(Symbol)
+        # A symbol is a pool, or a kind of value such as :local_date.
+        next [key, fresh[key]] unless spec.is_a?(Symbol) && @ctx.pool?(spec)
 
         rows = @ctx.records(spec)
         owner = given.flat_map do |record|
@@ -442,12 +459,12 @@ end
       end
     end
 
-    def compare!(what, a, b, a_name, b_name, outcome: true)
+    def compare!(what, a, b, a_name, b_name, outcome: true, noise: Set.new)
       if outcome && a[:accepted] != b[:accepted]
         raise Failure.new("#{what}: #{a_name} #{a[:accepted] ? "accepted" : "refused"} (#{a[:outcome]}), #{b_name} #{b[:accepted] ? "accepted" : "refused"} (#{b[:outcome]})",
                           log: @log, definition: @definition)
       end
-      diff = Sequences.diff(a[:rows], b[:rows], Set.new)
+      diff = Sequences.diff(a[:rows], b[:rows], noise)
       return if diff.empty?
 
       raise Failure.new("#{what}: rows differ (#{a_name} => #{a[:outcome]}; #{b_name} => #{b[:outcome]})\n#{diff.first(6).map { it[:text] }.join("\n")}",
@@ -603,7 +620,7 @@ end
       # discard; only an alert this request set counts.
       flash = @ctx.http.flash if result.between?(300, 399)
       alert = flash[:alert] if flash && !flash.instance_variable_get(:@discard).include?("alert")
-      body = @ctx.http.response&.body.to_s if result >= 400
+      body = @ctx.http.response&.body.to_s.dup.force_encoding(Encoding::UTF_8).scrub if result >= 400
       # The plain error page says only "400 Bad Request"; the exception the
       # request raised names the param.
       raised = @ctx.http.request&.env&.[]("action_dispatch.exception") if result >= 400
@@ -837,7 +854,10 @@ end
     report[:reached] = tallies.transform_keys(&:to_s)
     report[:refused_with] = (@examples || {}).group_by { it[0][0] }.transform_values { |pairs| pairs.map(&:last).first(2) }
     @examples = nil
-    File.write(ENV["SEQ_REPORT"], JSON.pretty_generate(report)) if ENV["SEQ_REPORT"]
+    # A refusal quotes a response body, which Rack hands over as binary; a
+    # byte that is not UTF-8 must not lose the whole report.
+    utf8 = ->(v) { v.is_a?(String) ? v.dup.force_encoding(Encoding::UTF_8).scrub : v.is_a?(Hash) ? v.to_h { [utf8.(_1), utf8.(_2)] } : v.is_a?(Array) ? v.map(&utf8) : v }
+    File.write(ENV["SEQ_REPORT"], JSON.pretty_generate(utf8.(report))) if ENV["SEQ_REPORT"]
     reset_database
   end
 
