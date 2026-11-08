@@ -851,11 +851,12 @@ module Propose
     made = {}
     lines = []
     needed = Set.new
-    grow = ->(f) { needed.add?(f.name) && Array(seedable(f)).each { |a| factories.find { it.name == a }&.then { grow.(it) } } }
+    deps = ->(f) { Array(seedable(f)) | named_parents(f) }
+    grow = ->(f) { needed.add?(f.name) && deps.(f).each { |a| factories.find { it.name == a }&.then { grow.(it) } } }
     factories.select { seedable(it) && wanted.include?(it.build_class.table_name) }.each { grow.(it) }
     pending = factories.select { seedable(it) && needed.include?(it.name) }
     until pending.empty?
-      ready = pending.select { |f| seedable(f).all? { made.key?(it) } }
+      ready = pending.select { |f| deps.(f).all? { made.key?(it) } }
       break if ready.empty?
 
       ready.each do |factory|
@@ -899,6 +900,15 @@ module Propose
           once |= single
           list = ->(a) { single.include?(a) ? "free_#{a.to_s.pluralize}" : a.to_s.pluralize }
           once.each { |a| picks[assocs.index(a)] = "#{a}: #{list.(a)}[i]" }
+          # A payment of kind "invoice" belongs to an invoice, and to that
+          # invoice's patient: a world where it has neither is one the app
+          # never makes.
+          named_parents(factory).each do |n|
+            pick = "#{n.to_s.pluralize}[i % #{n.to_s.pluralize}.size]"
+            parent = model.reflect_on_association(n).klass
+            assocs.each_with_index { |a, j| picks[j] = "#{a}: #{pick}.#{a}" if parent.reflect_on_association(a)&.macro == :belongs_to }
+            picks << "#{n}: #{pick}"
+          end
           range = assocs.empty? ? root_sizes(factory) : "1..#{most}"
           count = "world_size(:#{var}, #{range})"
           count = "[#{count}, #{(once.any? ? once : assocs).map { "#{list.(it)}.size" }.join(once.any? ? ", " : " * ")}].min" if assocs.any?
@@ -910,6 +920,15 @@ module Propose
       end
     end
     lines
+  end
+
+  # The optional parents a factory's own values name (kind "invoice" and
+  # `belongs_to :invoice, optional: true`), which the setup fills.
+  def named_parents(factory)
+    values = (FactoryBot.attributes_for(factory.name) rescue {}).values.grep(String)
+    names = factories.map(&:name)
+    factory.build_class.reflect_on_all_associations(:belongs_to)
+           .select { it.options[:optional] && !it.polymorphic? && values.include?(it.name.to_s) && names.include?(it.name) }.map(&:name)
   end
 
   # World sizes are drawn per case, so capacity pressure and an empty
