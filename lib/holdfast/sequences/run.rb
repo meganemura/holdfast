@@ -65,6 +65,8 @@ def hint(text, params)
   return "change #{named.join(", ")}" if named.any?
 
   case low
+  when /only one door picks|one door only|one door makes a new/
+    "the two doors cannot take the same inputs; drop the twins line, or give both doors the same params"
   when /ends? before|duration|longest|shortest|minutes/
     "draw the end from the start: #{params.grep(/end|until|minutes/).first || "ends_at"}: after(:starts_at, minutes: [...])"
   when /missing param (\w+)/ then "add the param #{$1} to the action body"

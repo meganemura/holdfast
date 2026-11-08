@@ -459,13 +459,18 @@ module Propose
     @api_auth ||= begin
       text = Rails.root.glob("app/api/**/*.rb").map { File.read(it) }.join("\n")
       chunks = text.split(/^\s*def /)
+      # A helper that reads the header (`def bearer_token = headers["Authorization"]...`)
+      # stands for it where a lookup calls the helper.
+      readers = chunks.filter_map { |c| (h = c[/headers\["([^"]+)"\]/, 1]) && [c[/\A(\w+)/, 1], [h, c.include?("Bearer")]] }.to_h
       lookups = chunks.flat_map do |chunk|
         locals = chunk.scan(/^\s*(\w+)\s*=\s*[^=\n]*headers\["([^"]+)"\]/).to_h
         bearer = chunk.include?("Bearer")
         chunk.scan(/([A-Z]\w*)(?:\.where\(([^)]*)\))?\.find_by!?\(([^)]*)\)/).filter_map do |model, where, args|
           pairs = "#{where}, #{args}".scan(/(\w+):\s*([^,]+)/)
-          header, column = pairs.filter_map { |col, expr| (h = expr[/headers\["([^"]+)"\]/, 1] || locals[expr.strip]) && [h, col] }.first
+          header, column = pairs.filter_map { |col, expr| (h = expr[/headers\["([^"]+)"\]/, 1] || locals[expr.strip] || readers[expr.strip[/\A(\w+)/, 1]]&.first) && [h, col] }.first
           next unless header
+
+          bearer ||= readers.values.include?([header, true])
 
           literal = pairs.select { |_, expr| expr.strip.match?(/\A("[^"]*"|\d+)\z/) }.to_h { |k, v| [k, v.strip] }
           [header, model.safe_constantize, column, literal, bearer]
@@ -664,7 +669,11 @@ module Propose
         var = factory.name.to_s.pluralize
         limits = capacity_args(model, factory) + distinct_times(model)
         if assocs.empty? && limits.empty?
-          lines << "#{var} = create_list(:#{factory.name}, world_size(:#{var}, #{root_sizes(factory)}))"
+          traits = factory.definition.defined_traits.map(&:name)
+          # Each trait in turn (a host, then a manager), so an action only
+          # one kind of record may take is reached.
+          lines << (traits.empty? ? "#{var} = create_list(:#{factory.name}, world_size(:#{var}, #{root_sizes(factory)}))" :
+                    "#{var} = Array.new(world_size(:#{var}, #{root_sizes(factory)})) { |i| create(:#{factory.name}, *#{[[], *traits.map { [it.to_sym] }].inspect}[i % #{traits.size + 1}]) }")
         else
           sizes = assocs.map { made[it] }
           most = sizes.inject(1) { |a, b| a * b }.clamp(2, 6)
@@ -740,6 +749,10 @@ module Propose
   end
 
   def pool_tables(selected) = selected.flat_map { it.params.values }.grep(Symbol).map(&:to_s)
+
+  # What the actions read in the probe (a member's active membership) is
+  # made too, or each check-in is refused for a record the area never has.
+  def setup_tables(selected, stats) = pool_tables(selected) | selected.flat_map { stats.dig(it.name, :reads)&.keys || [] }
 
   def probe(selected)
     source = definition_source("probe", selected, {}, refusals: [], failures: [], setup: setup_lines([], models.map(&:table_name)))
@@ -873,7 +886,15 @@ end
     (api_auth[:envs].map { it[1] } | controller_envs).uniq.each { |env| out << "    ENV[#{env.inspect}] = \"sequences-#{env.downcase.tr("_", "-")}\"\n" }
     signs_in = session_sign_in && selected.any? { it.body.include?("desk_sign_in") || it.body.include?(session_sign_in[:path].inspect) }
     out << "    #{session_sign_in[:setup]}\n" if signs_in && session_sign_in[:setup]
-    api_own_records.each { out << "    #{it[1]}\n" } if selected.any? { it.kind == :api }
+    # The caller's own record joins the list of its kind when the setup
+    # makes one, so the records made from that list (its membership) include it.
+    own = selected.any? { it.kind == :api } ? api_own_records : []
+    setup = setup.flat_map do |line|
+      joined = own.select { |_, made, _| line.start_with?("#{made[/create\(:(\w+)/, 1].pluralize} = ") }
+      own -= joined
+      [line, *joined.map { |_, made, _| "#{made[/create\(:(\w+)/, 1].pluralize} << #{made}" }]
+    end
+    own.each { out << "    #{it[1]}\n" }
     setup.each { out << "    #{it}\n" }
     out << "  end\n\n"
     pools.each { out << "  pool(:#{it}) { #{it.to_s.classify}.order(:id) }\n" }
@@ -1124,7 +1145,7 @@ end
       areas(stats).each do |name, selected, own|
         inserted = made_by_own_actions(selected, stats)
         source = definition_source(name, selected, stats, refusals: app_refusals(stats, selected), failures:,
-                                                          setup: setup_lines(inserted, pool_tables(selected)), note: "writes #{own.join(", ")}")
+                                                          setup: setup_lines(inserted, setup_tables(selected, stats)), note: "writes #{own.join(", ")}")
         path = dir.join("#{name}.rb")
         if path.exist? && !force
           $stderr.puts "kept #{path.relative_path_from(Rails.root)} (exists; --force replaces it)"
@@ -1145,7 +1166,7 @@ end
       stats = probe(selected)
       inserted = made_by_own_actions(selected, stats)
       name = argv.join("_").gsub(/[^a-z0-9_]+/i, "")
-      puts spec_file(name, definition_source(name, selected, stats, refusals: app_refusals(stats, selected), failures:, setup: setup_lines(inserted, pool_tables(selected))))
+      puts spec_file(name, definition_source(name, selected, stats, refusals: app_refusals(stats, selected), failures:, setup: setup_lines(inserted, setup_tables(selected, stats))))
     end
     $stderr.puts "propose: #{(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).round(1)} s"
   end

@@ -407,6 +407,14 @@ end
           Sequences.tally(:"#{first_name} = #{second_name}", "refused: option on one door only (#{options.join(", ")})")
           next
         end
+        # One door picks the record from a pool (the desk's member) where the
+        # other acts for whoever signed in: the two act on different records.
+        pools = [first, second].map { |a| a.params.reject { |k, _| k == :caller }.values.select { it.is_a?(Symbol) && @ctx.pool?(it) }.uniq }
+        alone = (pools[0] - pools[1]) | (pools[1] - pools[0])
+        if alone.any?
+          Sequences.tally(:"#{first_name} = #{second_name}", "refused: only one door picks from #{alone.join(", ")}")
+          next
+        end
         # One door makes a new value (a unique email) where the other draws
         # one that exists: a refusal on one side is the input, not the code.
         fresh = (Array(first.fresh) + Array(second.fresh)).map(&:to_s) & unmatched.map { it.delete_suffix("_from") }
@@ -1087,11 +1095,12 @@ end
     Rails.application.eager_load!
     quiet_errors
     random = Random.new(seed)
-    stats = Hash.new { |h, k| h[k] = { writes: Hash.new(0), outcomes: Hash.new(0), errors: Hash.new(0), runs: 0 } }
+    stats = Hash.new { |h, k| h[k] = { writes: Hash.new(0), reads: Hash.new(0), outcomes: Hash.new(0), errors: Hash.new(0), runs: 0 } }
     sub = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
       name = Thread.current[:sequences_action] or next
       verb, table = payload[:sql].match(/\A\s*(INSERT INTO|UPDATE|DELETE FROM)\s+"?(\w+)"?/i)&.captures
       stats[name][:writes]["#{verb.split.first.downcase} #{table}"] += 1 if table
+      payload[:sql].scan(/\b(?:FROM|JOIN)\s+"?(\w+)"?/i).flatten.each { stats[name][:reads][it] += 1 } if payload[:sql].match?(/\A\s*SELECT/i)
     end
     actions = definition.actions.values
     walks.times do
