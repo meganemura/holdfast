@@ -34,6 +34,11 @@ module Holdfast
       holes = []
       basis = []
       return Result.new(path: nil, data: nil, holes: ["no def found for #{name}"], basis:) unless node
+      # A controller built with `.new` has no request, so every action fails
+      # inside Rails the same way on both sides, and that pin compares nothing.
+      if @target.file.start_with?("app/controllers/")
+        return Result.new(path: nil, data: nil, holes: ["#{@target.name} runs through a request; write a request spec, or a suspicion whose `do` sends that request, and run holdfast check"], basis:)
+      end
 
       params = node.parameters
       params = params.parameters if params.is_a?(Prism::BlockParametersNode)
