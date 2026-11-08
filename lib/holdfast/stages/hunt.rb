@@ -47,22 +47,30 @@ module Holdfast
 
         table = JSON.parse(File.read(json))
         rows = table.map { area_row(change, _1) }
-        [reach_row(table)].compact + rows
+        [reach_row(change, table)].compact + rows
       end
 
       # The first line of a hunt says how much of it ran: an action that was
       # refused every time, or never drawn, checked nothing, and an area that
       # reached under half its actions is not listed as clean.
-      def self.reach_row(table)
-        counts = table.filter_map { |r| r["reached"].to_s[%r{(\d+)/(\d+)}] && [r["area"], $1.to_i, $2.to_i] }
+      def self.reach_row(change, table)
+        counts = table.filter_map { |r| r["reached"].to_s[%r{(\d+)/(\d+)}] && [r, $1.to_i, $2.to_i] }
         total = counts.sum { _1[2] }
         reached = counts.sum { _1[1] }
         return nil if total.zero? || reached == total
 
-        thin = counts.select { |_, a, b| a * 2 < b }
+        thin = counts.select { |_, a, b| a * 2 < b }.sort_by { |_, a, b| a.fdiv(b) }
+        # Each thin area names its file and the first actions that checked
+        # nothing, with the refusal, so the fix starts at a line, not a count.
+        evidence = thin.map do |r, a, b|
+          missing = r["text"].to_s.lines.drop(1).map { _1.strip.delete_prefix("- ") }.reject(&:empty?)
+          "#{r["area"]} (#{r["file"].to_s.delete_prefix("#{change.root}/")}): #{a}/#{b} actions reached#{"; first: #{missing.first(2).join("; ")}" if missing.any?}"
+        end
+        worst = thin.first&.first
+        step = worst ? "start with #{worst["area"]}: make the records or the sign-in its unreached actions need in #{worst["file"].to_s.delete_prefix("#{change.root}/")}, then holdfast run" :
+                       "read each area's row below for the refusals, fix the setup or the sign-in in its file, then holdfast run"
         row("(hunt)", "unchecked", "unreached: #{total - reached} of #{total} actions (refused every time or never drawn); #{thin.size} of #{counts.size} areas reached under half",
-            thin.map { |area, a, b| "#{area}: #{a}/#{b} actions reached" },
-            "read each area's row below for the refusals, fix the setup or the sign-in in its file, then holdfast run; until then the hunt says little about these areas")
+            evidence, "#{step}; until then the hunt says little about these areas")
       end
 
       # The sequences library needs hegeltest, which the app's bundle may
@@ -127,6 +135,13 @@ module Holdfast
           found = at ? logged[at + 1] : logged.find { _1.match?(/ raised |invariant \w+ broken|differ|disagree/) && !_1.start_with?("#", "1)") }
           reason = found ? found.sub(/\A.*?in '[^']+': /, "").sub(/ \(Sequences::Failure\)\z/, "") : lines.first.delete_prefix("FAILURE: ")
           short = reason.size > 300 ? "#{reason[0, 300]}... (whole text in evidence)" : reason
+          # Broken before any action ran, the world the setup drafted already
+          # breaks the rule: the setup or the drafted rule is wrong, not the app.
+          if (rule = reason[/invariant (\w+) broken after setup/, 1])
+            return row(area, "unchecked", "the drafted setup already breaks #{rule}, before any action; the hunt checked nothing here",
+                       ["failure: #{reason}", "log: #{log}"],
+                       "make the setup in #{r["file"].to_s.delete_prefix("#{change.root}/")} build records that keep #{rule}, or drop the rule from .holdfast/sequences/invariants.rb if the app does not promise it; then holdfast run", scope:)
+          end
           row(area, "bug_suspect", short, ["failure: #{reason}", "log: #{log} (the shortest sequence and an `it` block that replays it)"],
               "paste the `it` block from the log into #{r["file"].to_s.delete_prefix("#{change.root}/")}, see it fail, fix the code, run again", scope:)
         when "partly checked"
