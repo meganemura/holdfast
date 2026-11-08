@@ -18,6 +18,9 @@ module Holdfast
       Result = Data.define(:outcomes, :reach, :failure)
       # Where read_reach keeps the values a test file's inputs wrote.
       DREW = "(drew)"
+      # Prefix of the key that holds the branch arms a test took in one file,
+      # each as "line:column-line:column", the start and end of the arm.
+      ARMS = "(arms)"
       DISCARDS = {
         "signature_change" => "the test calls something whose arguments the change altered",
         "load_error" => "the test does not load on head",
@@ -43,13 +46,28 @@ module Holdfast
         Result.new(outcomes:, reach: read_reach(reach_dir), failure:)
       end
 
-      # test path (as in the run directory) => { "1" => {file => [lines]}, "2" => ... }
+      # test path (as in the run directory) => { "1" => {file => [lines]}, "2" => ... },
+      # and the same for "<test path>:<example line>" when the recorder could
+      # tell the examples of a file apart.
+      # What one outcome ran on one side ("1" base, "2" head): its own
+      # example's lines when they were kept, else its whole file's.
+      def self.ran(reach, outcome, side)
+        own = "#{outcome.source.path}:#{outcome.test["line"]}"
+        (reach.key?(own) && reach[own].key?(side) ? reach[own] : reach.fetch(outcome.source.path, {})).fetch(side, {})
+      end
+
       def self.read_reach(dir)
         reach = Hash.new { |h, k| h[k] = Hash.new { |h2, k2| h2[k2] = Hash.new { |h3, k3| h3[k3] = [] } } }
         Dir.glob(File.join(dir, "reach-*.json")).each do |file|
           row = JSON.parse(File.read(file))
           row["hits"].each { |path, lines| reach[row["test"]][row["side"]][path] |= lines }
           reach[row["test"]][row["side"]][DREW] |= Array(row["drew"])
+          Hash(row["arms"]).each { |path, arms| reach[row["test"]][row["side"]][ARMS + path] |= arms }
+          Hash(row["examples"]).each do |line, seen|
+            own = reach["#{row["test"]}:#{line}"][row["side"]]
+            seen["hits"].each { |path, lines| own[path] |= lines }
+            seen["arms"].each { |path, arms| own[ARMS + path] |= arms }
+          end
         end
         reach
       end

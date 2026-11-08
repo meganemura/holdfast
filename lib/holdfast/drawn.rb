@@ -7,7 +7,11 @@ module Holdfast
   # stopped selecting `in_transit` agrees on every hold that is not in
   # transit.
   module Drawn
-    Need = Data.define(:value, :file, :line, :why) do
+    # arm is set for a branch whose body shares the line with its condition
+    # (`return x if y`): every run of that line counts it, so only branch
+    # coverage, matched on the body's span, can tell whether the body ran.
+    Need = Data.define(:value, :file, :line, :why, :arm) do
+      def initialize(value:, file:, line:, why:, arm: nil) = super
       def label = value ? value.inspect : "the branch at #{File.basename(file)}:#{line}"
     end
     COMPARE = %i[== != === include? in? eql?].freeze
@@ -88,7 +92,7 @@ module Holdfast
       base_all = compared(base_ast, span["old_start"] ? (span["old_start"]..span["old_end"]).to_a : [])
       (head_vals - base_all).each { out << Need.new(value: _1, file: t.file, line: nil, why: "a changed line of #{t.name} compares with it") }
       (base_vals - head_all).each { out << Need.new(value: _1, file: t.file, line: nil, why: "#{t.name} no longer compares with it") }
-      branches(head_ast, head_lines).each { |line, text| out << Need.new(value: nil, file: t.file, line:, why: "the change adds `#{text}`") }
+      branches(head_ast, head_lines).each { |line, arm, text| out << Need.new(value: nil, file: t.file, line:, arm:, why: "the change adds `#{text}`") }
       out.uniq { [_1.value, _1.line] }
     end
 
@@ -127,13 +131,16 @@ module Holdfast
     end
 
     # Each if, unless, elsif, when or in that starts on a changed line,
-    # with the first line of its body: reaching it is drawing the branch.
+    # with the first line of its body: reaching it is drawing the branch. A
+    # body on the condition's own line also carries its span.
     def self.branches(ast, lines)
       nodes(ast) { |n| (n.is_a?(Prism::IfNode) || n.is_a?(Prism::UnlessNode) || n.is_a?(Prism::WhenNode) || n.is_a?(Prism::InNode)) && lines.include?(n.location.start_line) }.filter_map do |n|
         body = n.statements&.body&.first or next
         line = body.location.start_line
-        line = n.location.start_line if line == n.location.start_line && !n.is_a?(Prism::WhenNode)
-        [line, n.slice.lines.first.strip[0, 60]]
+        # An arm's start alone is ambiguous: the else arm of `x if y` starts where
+        # the whole expression does, so the arm is named by its start and end.
+        arm = (l = body.location; "#{l.start_line}:#{l.start_column}-#{l.end_line}:#{l.end_column}") if line == n.location.start_line && !n.is_a?(Prism::WhenNode)
+        [line, arm, n.slice.lines.first.strip[0, 60]]
       end
     end
 
@@ -150,11 +157,15 @@ module Holdfast
     # A value counts as drawn when one reached test wrote it on both sides:
     # the same input on base and head. Written on one side only, it came
     # from the code under test, not from an input. A branch counts when a
-    # reached test ran its first body line on head.
+    # reached test ran its first body line on head, or, for a body on the
+    # condition's line, took that arm.
     def self.missing(needs, outcomes, reach)
       needs.reject do |need|
         outcomes.any? do |o|
-          need.value ? sides_writing(reach, o, need.value).size == 2 : Array(reach.dig(o.source.path, "2", need.file)).include?(need.line)
+          if need.value then sides_writing(reach, o, need.value).size == 2
+          elsif need.arm then Stages::Diff.ran(reach, o, "2").fetch(Stages::Diff::ARMS + need.file, []).include?(need.arm)
+          else Stages::Diff.ran(reach, o, "2").fetch(need.file, []).include?(need.line)
+          end
         end
       end
     end

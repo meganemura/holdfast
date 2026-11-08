@@ -144,7 +144,7 @@ base にないメソッド、カラム、ルートを呼ぶ疑いは head でだ
 `holdfast run` は、疑いを書かずに変更を確かめます。
 変更された各メソッドに一行を与え、変更された定数やスコープの呼び出し元にも行を与えます。
 各対象の名前を含むテストを base と head で走らせ、各メソッドの引数からピンの下書きを作ります。
-行は `unintended_change`（base で通り head で失敗する）、`intended_change`（意図したと印を付けた違い）、`unchecked`（誰も引いていない値を示すので、それを疑いとして書く）、`clean`（示した証拠だけを保証する）のいずれかです。
+行は `unintended_change`（base で通り head で失敗する）、`intended_change`（意図したと印を付けた違い、または変更で足したテストだけが通る新しい振る舞い）、`unchecked`（誰も引いていない値を示すので、それを疑いとして書く）、`clean`（示した証拠だけを保証する）のいずれかです。
 この部分には [jitcatch](https://github.com/meganemura/jitcatch) と [branchout](https://github.com/meganemura/branchout) が必要ですが、どちらもまだ RubyGems にありません。
 それらがなければ、変更に対する `holdfast run` は終了ステータス 1 で終わり、入れ方を表示します。
 

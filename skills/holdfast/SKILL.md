@@ -57,16 +57,16 @@ An error that app code raised is how the action ended, and `expect` is checked a
 holdfast run [--base REF] [--intent TEXT] [--target NAME]... [--only NAME]... [--sequences] [--observe] [--budget SECONDS]
 ```
 
-It compares the working tree with the merge base of REF. Each changed method gets a row; so do the callers of a changed constant or scope, one and two calls up, ranked first. On base and head it runs the tests that name each target, the test files the change edited, your evidence tests, and pins it drafts from the method's parameters. A test counts only when it reached the changed lines.
+It compares the working tree with the merge base of REF. Each changed method gets a row; so do the callers of a changed constant or scope, one and two calls up, ranked first. On base and head it runs the tests that name each target, the test files the change edited, your evidence tests, and pins it drafts from the method's parameters. A test counts only when its own example reached the changed lines, not when another example in its file did.
 
-A row is `clean` only when, besides reaching the lines, an input drew each value the change added or removed (a member of a changed list or table constant the target reads, a literal a changed line compares with) on both sides, and a test ran each branch the change added. Otherwise it is `unchecked` and names the value nobody drew: write that as a suspicion and `holdfast check` it.
+A row is `clean` only when, besides reaching the lines, an input drew each value the change added or removed (a member of a changed list or table constant the target reads, a literal a changed line compares with) on both sides, and a test ran each branch the change added (for `return x if y`, the body itself, not only the line). Otherwise it is `unchecked` and names the value nobody drew: write that as a suspicion and `holdfast check` it.
 
 | kind | do |
 |---|---|
 | `unintended_change` | Passes on base, fails on head, not marked. Fix the code, or mark it meant (below). |
 | `bug_suspect` | A hunt broke a rule or raised. Fix the code, or declare the error. |
 | `unchecked` | Do what `next` says. Never report it as safe. |
-| `intended_change` | Confirm the head value is what the intent wants. |
+| `intended_change` | A difference you marked as meant, or new behavior only new specs run (an added method, or an added branch the agreeing tests never took). Confirm the head value is what the intent wants. |
 | `clean` | Covers only the evidence it lists. A drafted pin whose inputs built no record (`returns: []` in `.holdfast/runs/<slug>/observed.json`) checked nothing: write the case as a suspicion. |
 
 Evidence goes under `.holdfast/evidence/<slug>` (the row's `next` names the path): `<slug>/*_spec.rb` tests (under `change/` when meant to fail on base), or `<slug>.inputs.json` pin inputs (copy the draft from `.holdfast/drafts/`, fill each `{"fill": ...}`, mark `"change": true` where the intent changes the result). `--target NAME` with nothing changed pins NAME before you edit it.

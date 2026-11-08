@@ -82,7 +82,7 @@ module Holdfast
 
       def self.within?(reader, t) = reader.file == t.file && t.span["new_start"] && (t.span["new_start"]..t.span["new_end"]).cover?(reader.line)
 
-      def self.hits(diff, outcome, side, file) = diff.reach.dig(outcome.source.path, side == "base" ? "1" : "2", file) || []
+      def self.hits(diff, outcome, side, file) = Diff.ran(diff.reach, outcome, side == "base" ? "1" : "2").fetch(file, [])
 
       def self.reached?(diff, outcome, t, lines)
         want = method_lines(t, lines)
@@ -106,6 +106,7 @@ module Holdfast
 
       def self.draw_step(t, undrawn, gap)
         value = undrawn.find(&:value)
+        return "send a request that takes #{undrawn.first.label}: write it as a suspicion for holdfast check, or as a request spec; then holdfast run" if t.file.start_with?("app/controllers/") && !value
         how = value ? "an input whose record holds #{value.label}" : "an input that takes #{undrawn.first.label}"
         place = gap&.draft ? "fill #{rel(gap.draft.path)} and copy it to .holdfast/evidence/" : "add it to .holdfast/evidence/#{Holdfast.slug(t.name)}.inputs.json"
         "draw #{how}: #{place}, or write it as a suspicion for holdfast check; then holdfast run"
@@ -146,6 +147,19 @@ module Holdfast
           Verdict.of(**base, kind: "unchecked", reason: "#{agree.size} test(s) ran it on both sides and agree, but no input drew #{undrawn.first(3).map(&:label).join(", ")}#{" (+#{undrawn.size - 3} more)" if undrawn.size > 3}",
                      evidence: undrawn.map { "not drawn: #{_1.label} (#{_1.why})" } + Drawn.one_sided(undrawn, reached, diff.reach) + details,
                      next_step: draw_step(t, undrawn, gap))
+        elsif agree.empty? && t.added? && (fresh = reached.select { _1.kind == "no_base" }).any?
+          # Base has no such method, so a spec that calls it has no base side:
+          # what it states is the new behavior, to read against the intent.
+          places = fresh.map(&:place).uniq
+          Verdict.of(**base, kind: "intended_change", reason: "added; only new spec(s) with no base side run it: #{places.first(2).join(", ")}#{" +#{places.size - 2}" if places.size > 2}",
+                     evidence: details, next_step: "confirm those specs state what the intent wants #{t.name} to do")
+        elsif agree.any? && !t.added? && (fresh = Drawn.missing(Drawn.needs(change, t, lines), agree, diff.reach)).any?
+          # Only a spec with no base side took what the change added, so the
+          # tests that agree never ran it: the head behavior is new, not unchanged.
+          by = new_specs.select { |o| Drawn.missing(fresh, [o], diff.reach).size < fresh.size }.map(&:place).uniq
+          Verdict.of(**base, kind: "intended_change", reason: "#{fresh.first(3).map(&:label).join(", ")} runs only in new spec(s) with no base side#{": #{by.first(2).join(", ")}" if by.any?}; the #{agree.size} test(s) that agree never took it",
+                     evidence: fresh.map { "only head-only specs took #{_1.label} (#{_1.why})" } + details,
+                     next_step: "confirm the new spec states what the intent wants for #{fresh.first.label}")
         elsif agree.any?
           Verdict.of(**base, kind: "clean", reason: t.added? ? "added; #{agree.size} test(s) of its callers ran on both sides, reached it on head, and agree" : "#{agree.size} test(s) ran on both sides, reached#{span}, and agree",
                      evidence: details, next_step: "nothing; the claim covers only the tests in scope")
