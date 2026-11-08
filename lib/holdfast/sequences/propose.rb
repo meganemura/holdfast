@@ -44,11 +44,15 @@ module Propose
   # ISBN) reads it from a record the world has: `barcode` from a Copy.
   # A status or a reason is free text instead: copying one from an unrelated
   # table draws from an empty pool.
-  IDENTIFIER = /code|barcode|isbn|token|email|ref\z/
+  IDENTIFIER = /code|barcode|isbn|token|email|ref\z|reference\z/
   def column_source(key, models)
     # A param named like a record (`branch`, `pickup_branch`) sends its identifying column.
     if (model = model_for(key)) && (column = model.columns.find { it.type == :string && it.name.match?(IDENTIFIER) })
       return [model, column.name]
+    end
+    # `carnet_code` sends a carnet's code.
+    if (m = key.to_s.match(/\A(\w+?)_(\w+)\z/)) && m[2].match?(IDENTIFIER) && (model = model_for(m[1])) && model.columns_hash[m[2]]&.type == :string
+      return [model, m[2]]
     end
     return unless key.to_s.match?(IDENTIFIER)
 
@@ -94,8 +98,20 @@ module Propose
         model = at && stack[at].receiver.name.to_s.safe_constantize
         dated = stack.last.is_a?(Prism::CallNode) && %i[to_date to_time].include?(stack.last.name)
         outer = stack.last if stack.last.is_a?(Prism::CallNode) && stack.last.receiver.equal?(node)
+        # `params.require(:tickets).map { it.permit(:kind, ...) }` is a list of forms.
+        each_permit = if %i[map each filter_map flat_map].include?(outer&.name) && outer.block
+                        found_permit = nil
+                        todo = [outer.block]
+                        while (n = todo.pop)
+                          found_permit = n if n.is_a?(Prism::CallNode) && n.name == :permit && n.receiver
+                          todo.concat(n.compact_child_nodes)
+                        end
+                        found_permit
+                      end
         found[key] ||= if outer&.name == :permit
                          [:nested, outer.arguments.arguments.grep(Prism::SymbolNode).map { it.unescaped.to_sym }]
+                       elsif each_permit
+                         [:nested_list, Array(each_permit.arguments&.arguments).grep(Prism::SymbolNode).map { it.unescaped.to_sym }]
                        elsif %i[read original_filename path].include?(outer&.name) then [:upload]
                        elsif model then [model, pair ? pair.key.unescaped.to_sym : :id]
                        elsif dated then [:date]
@@ -270,6 +286,18 @@ module Propose
   # The table a pool draws from: `appointments_of_caller` draws appointments.
   def pool_table(pool) = pool.to_s.delete_suffix("_of_caller")
 
+  # The values a model's `inclusion: { in: [...] }` accepts for a column of
+  # this name, when every model that validates it accepts the same list.
+  def inclusion_values(key)
+    lists = models.filter_map do |m|
+      v = m.validators_on(key.to_sym).grep(ActiveModel::Validations::InclusionValidator).first or next
+      list = v.options[:in] || v.options[:within]
+      list = list.to_a if list.is_a?(Range) && list.size.to_i <= 20
+      list if list.is_a?(Array) && !list.empty? && list.all? { it.is_a?(String) || it.is_a?(Integer) }
+    end.uniq
+    lists.first if lists.size == 1
+  end
+
   # One body entry for a param: the value expression, with its spec added to
   # +params+.
   def value_for(key, type, params)
@@ -294,6 +322,18 @@ module Propose
     elsif type == "Integer"
       params[key.to_sym] = 0..5
       "#{key}:"
+    elsif %w[BigDecimal Float Numeric].include?(type) && COUNTS.none? { |pattern, _| key.match?(pattern) }
+      params[key.to_sym] = ["0", "1", "12.5", "-1"]
+      "#{key}:"
+    elsif key.end_with?("_ids") && (model = model_for(key.delete_suffix("_ids")))
+      # A list of ids sends one record's id: text there is refused or finds nothing.
+      var = model.model_name.singular.to_sym
+      params[var] = pool_name(model)
+      "#{key}: [#{var}.id]"
+    elsif type&.start_with?("Array") || type&.match?(/\A\[\w+\]\z/)
+      # `Array[String]` refuses a bare word and an empty list alike.
+      params[key.to_sym] = :text
+      "#{key}: [#{key}]"
     elsif type == "Hash"
       # A Hash with no declared keys refuses text; empty is the one safe draw.
       "#{key}: {}"
@@ -304,6 +344,9 @@ module Propose
       var = :"#{key}_from"
       params[var] = pool_name(source[0])
       "#{key}: #{var}.#{source[1]}"
+    elsif (listed = inclusion_values(key))
+      params[key.to_sym] = listed + [listed.first.is_a?(String) ? "holdfast text" : -1]
+      "#{key}:"
     elsif (counts = COUNTS.find { |pattern, _| key.match?(pattern) }&.last)
       params[key.to_sym] = counts
       "#{key}:"
@@ -317,7 +360,7 @@ module Propose
   # an integer capacity or a time zone refused every draw. A string the
   # model refuses as free text (a known time zone, a code format) is drawn
   # from the factory's value, free text and blank.
-  COLUMN_TYPES = { integer: "Integer", boolean: "Boolean", date: "Date", datetime: "Time" }.freeze
+  COLUMN_TYPES = { integer: "Integer", boolean: "Boolean", date: "Date", datetime: "Time", decimal: "BigDecimal", float: "Float" }.freeze
   def form_value(model, key, params)
     col = model&.columns_hash&.[](key.to_s)
     # A unique column drawn from records already there collides every time:
@@ -394,6 +437,9 @@ module Propose
         if kind == :nested
           form = model_for(key)
           "#{key}: { #{attribute.map { form_value(form, it, params) }.join(", ")} }"
+        elsif kind == :nested_list
+          form = model_for(key)
+          "#{key}: [{ #{attribute.map { form_value(form, it, params) }.join(", ")} }]"
         elsif kind == :upload
           # Drawn text sent as a file, so the action runs past its upload.
           params[key] = :text
@@ -439,12 +485,38 @@ module Propose
       children = route.params.select { |k, _| k.to_s.include?("[") }.group_by { |k, _| k.to_s[/\A[^\[]+/] }
       body = top.map do |key, spec|
         kids = children.delete(key.to_s)
-        next value_for(key, spec.is_a?(Hash) ? spec[:type].to_s : nil, params) unless kids
+        unless kids
+          expr = grape_value(key, spec, params)
+          next expr unless spec.is_a?(Hash) && spec[:required] == false
+
+          # An optional param is sent or left out: a code drawn from any
+          # record is refused whenever it is sent, and leaving it out is
+          # the call most clients make.
+          params[:"#{key}_sent"] = 0..1
+          value = expr.sub(/\A#{key}:\s*/, "")
+          next "**(#{key}_sent == 1 ? { #{key}: #{value.empty? ? key : value} } : {})"
+        end
 
         inner = kids.filter_map do |k, s|
           leaf = k.to_s[/\[([^\[\]]+)\]\z/, 1] or next
           next if k.to_s.count("[") > 1
+          if s.is_a?(Hash) && s[:values].is_a?(Array)
+            next "#{leaf}: #{grape_value("#{key}_#{leaf}", s, params).sub(/\A#{key}_#{leaf}:\s*/, "").then { it.empty? ? "#{key}_#{leaf}" : it }}"
+          end
 
+          # A child that is a column of the parent's model is drawn as the
+          # desk form draws it: `kind` from the values the model accepts.
+          form = model_for(key.to_s)
+          if form&.columns_hash&.key?(leaf)
+            drawn = {}
+            expr = form_value(form, leaf, drawn).sub(/\A#{leaf}:\s*/, "")
+            if expr.empty?
+              params[:"#{key}_#{leaf}"] = drawn.delete(leaf.to_sym)
+              expr = "#{key}_#{leaf}"
+            end
+            params.merge!(drawn)
+            next "#{leaf}: #{expr}"
+          end
           expr = value_for("#{key}_#{leaf}", s.is_a?(Hash) ? s[:type].to_s : nil, params).sub(/\A#{key}_#{leaf}:\s*/, "")
           "#{leaf}: #{expr.empty? ? "#{key}_#{leaf}" : expr}"
         end
@@ -463,6 +535,16 @@ module Propose
       Draft.new(name:, params:, body: block_for(params, call), kind: :api, resource: "api_#{rest.split("/").reject { it.start_with?(":") }.slice_after { model_for(it.singularize) }.first.join("_")}",
                 file: route.app.source&.source_location&.first)
     end
+  end
+
+  # A Grape param with `values: [...]` draws each listed value and one it
+  # refuses; any other param is drawn by its type.
+  def grape_value(key, spec, params)
+    values = spec[:values] if spec.is_a?(Hash)
+    return value_for(key, spec.is_a?(Hash) ? spec[:type].to_s : nil, params) unless values.is_a?(Array) && values.all? { it.is_a?(String) || it.is_a?(Integer) }
+
+    params[key.to_sym] = values + [values.first.is_a?(String) ? "holdfast text" : -1]
+    "#{key}:"
   end
 
   def grape_mounts
@@ -579,7 +661,7 @@ module Propose
     api_auth[:lookups].reject { it[3].empty? && !it[4] }.filter_map do |header, model, column, literal, _|
       factory = factories.find { it.build_class == model } or next
       token = "sequences-#{header.downcase.gsub(/[^a-z]+/, "-")}"
-      [header, "create(:#{factory.name}, #{[*literal.map { "#{_1}: #{_2}" }, "#{column}: #{token.inspect}"].join(", ")})", token]
+      [header, "create(:#{factory.name}, #{[*role_traits(factory), *literal.map { "#{_1}: #{_2}" }, "#{column}: #{token.inspect}"].join(", ")})", token]
     end
   end
 
@@ -699,13 +781,23 @@ module Propose
       end
       factory = model && factories.find { it.build_class == model && it.name.to_s == model.model_name.singular }
       attrs = literal.map { "#{_1}: #{_2}" } + by_param.map { |k, col| "#{col}: #{known[k].inspect}" } + (password ? ["#{secret}: #{DESK_PASSWORD.inspect}"] : [])
-      setup = factory && attrs.any? ? "create(:#{factory.name}, #{attrs.join(", ")})" : nil
+      setup = factory && attrs.any? ? "create(:#{factory.name}, #{[*role_traits(factory), *attrs].join(", ")})" : nil
       { key:, action:, controller: route.defaults[:controller], path: route.path.spec.to_s.sub("(.:format)", ""), body:, setup:, found: found&.to_sql }
     end.first
   end
 
   def factories
     @factories ||= FactoryBot.factories.to_a
+  end
+
+  # The traits that give a signed-in record a role the app checks
+  # (`trait :supervisor` with `current_staff.supervisor?` in a guard), so the
+  # caller reaches every action instead of only the ones open to all.
+  def role_traits(factory)
+    @app_text ||= Dir[Rails.root.join("app/{controllers,api}/**/*.rb")].map { File.read(it) }.join("\n")
+    factory.defined_traits.map(&:name).select do |t|
+      factory.build_class.method_defined?(:"#{t}?") && @app_text.match?(/\.#{Regexp.escape(t)}\?/)
+    end.map { ":#{it}" }
   end
 
   # A factory the setup may call: every association it declares is a bare

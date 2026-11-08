@@ -918,7 +918,7 @@ end
     tallies = @tallies&.transform_values(&:dup) || {}
     $stderr.puts coverage_report
     report[:reached] = tallies.transform_keys(&:to_s)
-    report[:refused_with] = (@examples || {}).group_by { it[0][0] }.transform_values { |pairs| pairs.map(&:last).first(2) }
+    report[:refused_with] = (@examples || {}).transform_values { |seen| seen.sort_by { -it[1] }.map(&:first) }
     @examples = nil
     # A refusal quotes a response body, which Rack hands over as binary; a
     # byte that is not UTF-8 must not lose the whole report.
@@ -1123,7 +1123,13 @@ end
   def self.tally(name, outcome)
     kind = kind(outcome)
     (@tallies ||= Hash.new { |h, k| h[k] = Hash.new(0) })[name][kind] += 1
-    (@examples ||= {})[[name.to_s, kind]] ||= outcome.to_s[0, 160] if kind.include?("refused")
+    return unless kind.include?("refused")
+
+    # Up to three distinct refusals, counted: the first one seen can be the
+    # rare one (an invalid kind) and hide the one every other draw met.
+    seen = ((@examples ||= {})[name.to_s] ||= Hash.new(0))
+    text = outcome.to_s[0, 160]
+    seen[text] += 1 if seen.key?(text) || seen.size < 3
   end
 
   def self.kind(outcome)

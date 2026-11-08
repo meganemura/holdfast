@@ -125,6 +125,8 @@ module Holdfast
         text = r["text"].to_s
         lines = text.lines.map(&:strip)
         scope = "#{r["seeds"].to_s.split(",").size} seed(s) x #{r["cases"]} cases, #{r["reached"]} actions reached"
+        cut = text[/cut by the time limit after \S+ of \d+ cases/]
+        scope = "#{cut}, #{r["reached"]} actions reached" if cut
         log = r["log"].to_s.delete_prefix("#{change.root}/")
         area = "sequences: #{r["area"]}"
         case r["verdict"]

@@ -90,8 +90,10 @@ def scope(report)
     params = report.dig("params", action.sub(/ \[other offset\]\z/, "")) || []
     if kinds.empty? then "#{action} (never drawn)"
     elsif kinds.keys.all? { it.include?("refused") }
-      text = report.dig("refused_with", action)&.first
-      "#{action} (only refused: #{clean_refusal(text)}; hint: #{hint(text, params)})"
+      texts = report.dig("refused_with", action) || []
+      text = texts.first
+      also = texts.drop(1).map { clean_refusal(it) }.uniq - [clean_refusal(text)]
+      "#{action} (only refused: #{clean_refusal(text)}#{"; also: #{also.join("; ")}" unless also.empty?}; hint: #{hint(text, params)})"
     end
   end
   done = report["actions"].size - missing.size
@@ -110,9 +112,16 @@ def verdict(r, limit)
     return ["unchecked", "-", "unchecked: #{r[:status] == :timeout ? "timed out after #{limit} s" : "no report (#{tail[0, 100]})"}"]
   end
   done, total, missing = scope(rep)
+  # The time limit stopped the area between cases with no failure found:
+  # what ran still counts, and the row says it was cut short.
+  if rep["verdict"].nil?
+    ran = File.read(r[:log])[/: (\d+) runs in/, 1]
+    rep = rep.merge("verdict" => "clean", "seeds" => [nil])
+    cut = "cut by the time limit after #{ran || "some"} of #{rep["cases"]} cases"
+  end
   case rep["verdict"]
   when "clean"
-    runs = "#{rep["seeds"].size} seeds x #{rep["cases"]} cases"
+    runs = cut || "#{rep["seeds"].size} seeds x #{rep["cases"]} cases"
     return ["clean", "#{done}/#{total}", "clean: #{runs}"] if missing.empty?
 
     ["partly checked", "#{done}/#{total}", "partly checked: #{runs}; not covered:\n#{missing.map { "    - #{it}" }.join("\n")}"]
