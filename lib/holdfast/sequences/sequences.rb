@@ -1106,7 +1106,7 @@ end
     Rails.application.eager_load!
     quiet_errors
     random = Random.new(seed)
-    stats = Hash.new { |h, k| h[k] = { writes: Hash.new(0), reads: Hash.new(0), outcomes: Hash.new(0), errors: Hash.new(0), runs: 0 } }
+    stats = Hash.new { |h, k| h[k] = { writes: Hash.new(0), reads: Hash.new(0), outcomes: Hash.new(0), errors: Hash.new(0), refusals: [], runs: 0 } }
     sub = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
       name = Thread.current[:sequences_action] or next
       verb, table = payload[:sql].match(/\A\s*(INSERT INTO|UPDATE|DELETE FROM)\s+"?(\w+)"?/i)&.captures
@@ -1143,7 +1143,10 @@ end
         begin
           stats[action.name][:runs] += 1
           with_zone("UTC") { runner.step(action.name, choice) }
-          stats[action.name][:outcomes][kind(runner.log.last[:outcome])] += 1
+          outcome = runner.log.last[:outcome]
+          stats[action.name][:outcomes][kind(outcome)] += 1
+          refusals = stats[action.name][:refusals]
+          refusals << outcome.to_s[0, 200] if kind(outcome).include?("refused") && refusals.size < 3 && !refusals.include?(outcome.to_s[0, 200])
         rescue Failure => e
           stats[action.name][:errors][e.cause ? e.cause.class.name : e.message.lines.first.strip[0, 80]] += 1
         end

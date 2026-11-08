@@ -157,9 +157,13 @@ module Propose
     end
     path.gsub(/:(\w+)/) do
       key = $1.to_sym
-      if (found = lookups[key])
+      if (choices = lookups[key])
+        # One file finds `:id` as a patient under /patients and as an
+        # appointment under /appointments: the segment before the param says which.
+        before = path[%r{([a-z_]+)/:#{key}\b}, 1]
+        found = choices.find { it[0].table_name == before || pool_name(it[0]).to_s == before } || choices.first
         var = found[0].model_name.singular
-        params[var.to_sym] = pool_name(found[0])
+        params[var.to_sym] = found[2] || pool_name(found[0])
         next "\#{#{var}.#{found[1]}}"
       end
       model = segments.assoc(key)[1]
@@ -208,15 +212,20 @@ module Propose
   # (`Member.find_by!(email: params.expect(guest: [:host_email])[:host_email])`)
   # is drawn from that record: free text names no member.
   def param_lookups
-    @param_lookups ||= Dir[Rails.root.join("app/controllers/**/*.rb")].each_with_object({}) do |file, found|
+    @param_lookups ||= Dir[Rails.root.join("app/{controllers,api}/**/*.rb")].each_with_object({}) do |file, found|
       Prism.parse_file(file).value.breadth_first_search do |c|
-        next false unless c.is_a?(Prism::CallNode) && %i[find_by find_by!].include?(c.name) && c.receiver.is_a?(Prism::ConstantReadNode)
+        next false unless c.is_a?(Prism::CallNode) && %i[find_by find_by!].include?(c.name)
+
+        # A scope may stand between: `Service.online.find_by!(code: ...)`.
+        root = c.receiver
+        root = root.receiver while root.is_a?(Prism::CallNode) && root.receiver
+        next false unless root.is_a?(Prism::ConstantReadNode)
 
         c.arguments&.arguments&.grep(Prism::KeywordHashNode)&.flat_map(&:elements)&.each do |pair|
           next unless pair.key.is_a?(Prism::SymbolNode) && pair.value.slice.include?("params")
 
           key = pair.value.slice.scan(/\[:(\w+)\]/).flatten.last or next
-          model = c.receiver.name.to_s.safe_constantize
+          model = root.name.to_s.safe_constantize
           found[key.to_sym] ||= [model, pair.key.unescaped] if model.is_a?(Class) && model < ActiveRecord::Base
         end
         false
@@ -231,14 +240,34 @@ module Propose
     return {} unless file && File.file?(file)
 
     text = File.read(file)
-    found = {}
-    text.scan(/([A-Za-z_]\w*)(?:\([^)]*\))?(?:\.where\([^)]*\))?\.find_by!?\((\w+):\s*params\[:(\w+)\]\)/) { |word, col, key| found[key.to_sym] ||= [word, col] }
-    text.scan(/([A-Za-z_]\w*)\.find\(params\[:(\w+)\]\)/) { |word, key| found[key.to_sym] ||= [word, "id"] }
-    found.filter_map do |key, (word, col)|
+    found = []
+    text.scan(/(?:(current_\w+)\.)?([A-Za-z_]\w*)(?:\([^)]*\))?(?:\.\w+)*?(?:\.where\([^)]*\))?\.find_by!?\((\w+):\s*params\[:(\w+)\]\)/) { |owner, word, col, key| found << [key, word, col, owner] }
+    text.scan(/(?:(current_\w+)\.)?([A-Za-z_]\w*)\.find\(params\[:(\w+)\]\)/) { |owner, word, key| found << [key, word, "id", owner] }
+    found.filter_map do |key, word, col, owner|
       model = word.match?(/\A[A-Z]/) ? word.safe_constantize : model_for(word.singularize)
-      [key, [model, col]] if model.is_a?(Class) && model < ActiveRecord::Base && model.column_names.include?(col)
-    end.to_h
+      next unless model.is_a?(Class) && model < ActiveRecord::Base && model.column_names.include?(col)
+
+      # `current_patient.appointments.find(params[:id])` finds only the
+      # caller's own records: any other answers 404.
+      [key.to_sym, [model, col, (owned_pool(owner, word, model) if owner)]]
+    end.group_by(&:first).transform_values { it.map(&:last).uniq }
   end
+
+  # A pool of the API caller's own records, named `<table>_of_caller`, with
+  # the expression that finds them.
+  def owned_pool(owner, assoc, model)
+    caller = model_for(owner.delete_prefix("current_")) or return
+    made = api_own_records.find { |_, line, _| line.start_with?("create(:#{factories.find { it.build_class == caller }&.name},") } or return
+    finder = "#{caller}.find_by(#{made[1][/(\w+: "#{made[2]}")\)\z/, 1]})"
+    name = :"#{pool_name(model)}_of_caller"
+    owned_pools[name] = "#{finder}.#{assoc}"
+    name
+  end
+
+  def owned_pools = @owned_pools ||= {}
+
+  # The table a pool draws from: `appointments_of_caller` draws appointments.
+  def pool_table(pool) = pool.to_s.delete_suffix("_of_caller")
 
   # One body entry for a param: the value expression, with its spec added to
   # +params+.
@@ -264,6 +293,9 @@ module Propose
     elsif type == "Integer"
       params[key.to_sym] = 0..5
       "#{key}:"
+    elsif type == "Hash"
+      # A Hash with no declared keys refuses text; empty is the one safe draw.
+      "#{key}: {}"
     elsif %w[Boolean Grape::API::Boolean].include?(type)
       params[key.to_sym] = 0..1
       "#{key}: #{key} == 1"
@@ -828,9 +860,9 @@ module Propose
   # :practitioners`, `guest_email_from: :guest_passes`)
   # is made in the setup even when the area inserts into it: an empty pool
   # leaves the action never drawn.
-  def copied_from(selected) = selected.flat_map { |d| d.params.values.grep(Symbol).map(&:to_s) }.uniq
+  def copied_from(selected) = selected.flat_map { |d| d.params.values.grep(Symbol).map { pool_table(it) } }.uniq
 
-  def pool_tables(selected) = selected.flat_map { it.params.values }.grep(Symbol).map(&:to_s)
+  def pool_tables(selected) = selected.flat_map { it.params.values }.grep(Symbol).map { pool_table(it) }
 
   # What the actions read in the probe (a member's active membership) is
   # made too, or each check-in is refused for a record the area never has.
@@ -904,11 +936,30 @@ module Propose
     # The action that made the most rows of each pool no factory seeds, so a
     # pool of loans has a loans_create to fill it.
     makers = lambda do |selected|
-      needed = selected.flat_map { it.params.values }.grep(Symbol).map(&:to_s).uniq - seeded
+      needed = selected.flat_map { it.params.values }.grep(Symbol).map { pool_table(it) }.uniq - seeded
       needed.filter_map do |pool|
         next if selected.any? { inserts.(it, pool).positive? }
 
         drafts.max_by { inserts.(it, pool) }.then { it if inserts.(it, pool).positive? }
+      end.uniq
+    end
+    # An action the probe saw refused for a state ("Only a checked in
+    # appointment can be completed") never runs in an area that cannot reach
+    # the state. The action whose name the refusal says (check_ins) joins it.
+    stem = ->(word) { word.downcase.sub(/(ed|ing|s)\z/, "") }
+    enablers = lambda do |chosen|
+      records = chosen.flat_map { it.params.values }.grep(Symbol).map { stem.(pool_table(it).singularize) }
+      # The probe walks every action at once, so it may have reached the state
+      # there: any refusal it saw counts.
+      texts = chosen.flat_map { stats[it.name][:refusals] || [] }
+      texts.flat_map do |text|
+        said = text.downcase.scan(/[a-z]+/).map(&stem)
+        drafts.reject { chosen.include?(it) }.select do |d|
+          next false unless stats[d.name][:outcomes].keys.any? { !it.include?("refused") }
+
+          tokens = d.kind == :api ? d.name.to_s.split("_id_", 2)[1].to_s.split("_") : d.resource.to_s.split("_")
+          (tokens.map(&stem) - records).reverse.take_while { said.include?(it) }.any? { it.size >= 4 }
+        end
       end.uniq
     end
     placed = drafts
@@ -921,6 +972,7 @@ module Propose
 
         selected += [d] + makers.(selected + [d])
       end
+      selected += enablers.(selected)
     [table, selected, ([table] + selected.flat_map(&written)).uniq]
   end
   # An action no area took (a job that only reaches a table no resource is
@@ -944,7 +996,9 @@ end
       { "create" => :create, "destroy" => :destroy }.fetch(action, action.to_sym)
     else
       verb, last = d.name.to_s[/\Aapi_(\w+?)_/, 1], d.body[%r{"/api/v\d+/[^"]*?([a-z_]+)"}, 1]
-      verb == "delete" ? :destroy : (model_for(last.to_s.singularize) ? :create : last&.to_sym)
+      # `POST /appointments/:id/visit` makes a visit, not an appointment.
+      made = model_for(last.to_s.singularize)
+      verb == "delete" ? :destroy : (made && made.table_name == primary(d.resource) ? :create : last&.to_sym)
     end
   end
 
@@ -968,18 +1022,19 @@ end
     (api_auth[:envs].map { it[1] } | controller_envs).uniq.each { |env| out << "    ENV[#{env.inspect}] = \"sequences-#{env.downcase.tr("_", "-")}\"\n" }
     signs_in = session_sign_in && selected.any? { it.body.include?("desk_sign_in") || it.body.include?(session_sign_in[:path].inspect) }
     out << "    #{session_sign_in[:setup]}\n" if signs_in && session_sign_in[:setup]
-    # The caller's own record joins the list of its kind when the setup
-    # makes one, so the records made from that list (its membership) include it.
+    # The caller's own record heads the list of its kind when the setup
+    # makes one, so the records made from that list (its membership, its
+    # appointments) always include one of its own.
     own = selected.any? { it.kind == :api } ? api_own_records : []
     setup = setup.flat_map do |line|
       joined = own.select { |_, made, _| line.start_with?("#{made[/create\(:(\w+)/, 1].pluralize} = ") }
       own -= joined
-      [line, *joined.map { |_, made, _| "#{made[/create\(:(\w+)/, 1].pluralize} << #{made}" }]
+      [line, *joined.map { |_, made, _| "#{made[/create\(:(\w+)/, 1].pluralize}.unshift(#{made})" }]
     end
     own.each { out << "    #{it[1]}\n" }
     setup.each { out << "    #{it}\n" }
     out << "  end\n\n"
-    pools.each { out << "  pool(:#{it}) { #{it.to_s.classify}.order(:id) }\n" }
+    pools.each { out << "  pool(:#{it}) { #{owned_pools[it] || pool_table(it).classify}.order(:id) }\n" }
     out << "\n"
     unless refusals.empty?
       out << "  # Errors the probe saw an action raise on purpose (classes the app defines).\n"
@@ -1092,13 +1147,23 @@ end
 
   def money_invariants
     money_rules.map do |r|
+      # A payment of one kind (a deposit) may be taken at booking, before the
+      # record reaches a settled status, and a desk booking may take none:
+      # for it only "never more than the amount" holds in every status.
+      rule, check =
+        if r.kind.empty?
+          ["a #{r.settled.join("/")} #{r.model.model_name.human.downcase} took its #{r.amount} through #{r.assoc.name} #{r.captured.join("/")}; any other status took nothing.",
+           "taken == (#{r.settled.inspect}.include?(record.status) ? record.#{r.amount} : 0)"]
+        else
+          ["no #{r.model.model_name.human.downcase} took more than its #{r.amount} through #{r.assoc.name} #{r.captured.join("/")}.",
+           "taken <= record.#{r.amount}"]
+        end
       <<~RUBY.chomp
-        # drafted, check it is a real rule: a #{r.settled.join("/")} #{r.model.model_name.human.downcase} took its #{r.amount} through
-        # #{r.assoc.name} #{r.captured.join("/")}; any other status took nothing.
+        # drafted, check it is a real rule: #{rule}
         invariant(:#{r.name}) do
           bad = #{r.model.name}.all.reject do |record|
             taken = #{r.child.name}.where(#{r.assoc.foreign_key}: record.id, status: #{r.captured.inspect}#{r.kind}).sum(:#{r.paid})
-            taken == (#{r.settled.inspect}.include?(record.status) ? record.#{r.amount} : 0)
+            #{check}
           end
           bad.empty? || "#{r.model.model_name.plural} \#{bad.map(&:id)}: #{r.amount} and the #{r.assoc.name} captured for them differ"
         end
