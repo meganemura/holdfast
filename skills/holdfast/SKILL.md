@@ -89,7 +89,7 @@ Sequences.everywhere do
 end
 ```
 
-A `bug_suspect` row names the broken rule, and its log holds the shortest sequence as a numbered narrative and an `it` block that replays it. A partly checked area lists each action that was only refused (with the refusal and the param to change) or never drawn: make the record in the area's `setup`, narrow a `pool`, or change the draws, then run again.
+A `bug_suspect` row names the broken rule, and its log holds the shortest sequence as a numbered narrative and an `it` block that replays it. When the time limit cut shrinking, the row says `not shrunk` and the log holds the first failing sequence instead. A twins pair the two doors cannot feed the same inputs (one picks a record the other takes from the sign-in, or one makes a new unique value) is listed as not reached; drop the `twins` line or give both doors the same params. A partly checked area lists each action that was only refused (with the refusal and the param to change) or never drawn: make the record in the area's `setup`, narrow a `pool`, or change the draws, then run again.
 
 ## When setup fails
 
