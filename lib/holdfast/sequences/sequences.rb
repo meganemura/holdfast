@@ -1048,8 +1048,15 @@ end
     return if diff.empty?
 
     # A column that differs between two UTC runs of the same steps (a random
-    # token, a fake's charge id) says nothing about time zones.
-    diff(base, replay_snapshot(definition, runner.log, "UTC"), Set.new).each { noise << it[:column] }
+    # token, a fake's charge id) says nothing about time zones, and neither
+    # does one that differs between two runs in the other zone: a `has_one`
+    # over several rows picks whichever row PostgreSQL returns first.
+    2.times { diff(base, replay_snapshot(definition, runner.log, "UTC"), Set.new).each { noise << it[:column] } }
+    begin
+      diff(replayed, replay_snapshot(definition, runner.log, zone), Set.new).each { noise << it[:column] }
+    rescue Diverged
+      return
+    end
     diff = diff.reject { noise.include?(it[:column]) }
     return if diff.empty?
 
