@@ -145,7 +145,6 @@ module Propose
     found
   end
 
-  # Path segments become pool records: `/loans/:id/renew` takes a Loan.
   # Path segments become pool records: `/loans/:id/renew` takes a Loan. In a
   # nested path the parent is read from the child (`closure.branch_id`), so
   # the two always match.
@@ -167,7 +166,7 @@ module Propose
       elsif model
         var = model.model_name.singular
         params[var.to_sym] = pool_name(model)
-        "\#{#{var}.id}"
+        "\#{#{var}.#{lookup_columns[[model.name, key]] || "id"}}"
       elsif (source = column_source(key, models))
         var = source[0].model_name.singular
         params[var.to_sym] = pool_name(source[0])
@@ -175,6 +174,26 @@ module Propose
       else
         params[key] = :TODO
         "\#{#{key}}"
+      end
+    end
+  end
+
+  # A controller that finds a path's record by another column
+  # (`Location.find_by!(code: params[:location_id])`) answers 404 to an id.
+  # Keyed by model and param, from every controller.
+  def lookup_columns
+    @lookup_columns ||= Dir[Rails.root.join("app/controllers/**/*.rb")].each_with_object({}) do |file, found|
+      Prism.parse_file(file).value.breadth_first_search do |c|
+        next false unless c.is_a?(Prism::CallNode) && %i[find_by find_by!].include?(c.name) && c.receiver.is_a?(Prism::ConstantReadNode)
+
+        c.arguments&.arguments&.grep(Prism::KeywordHashNode)&.flat_map(&:elements)&.each do |pair|
+          v = pair.value
+          next unless pair.key.is_a?(Prism::SymbolNode) && v.is_a?(Prism::CallNode) && v.name == :[] &&
+                      v.receiver.is_a?(Prism::CallNode) && v.receiver.name == :params && v.arguments&.arguments&.first.is_a?(Prism::SymbolNode)
+
+          found[[c.receiver.name.to_s, v.arguments.arguments.first.unescaped.to_sym]] ||= pair.key.unescaped
+        end
+        false
       end
     end
   end
@@ -215,6 +234,46 @@ module Propose
     end
   end
 
+  # A form field of a model's column is drawn by the column's type: text in
+  # an integer capacity or a time zone refused every draw. A string the
+  # model refuses as free text (a known time zone, a code format) is drawn
+  # from the factory's value, free text and blank.
+  COLUMN_TYPES = { integer: "Integer", boolean: "Boolean", date: "Date", datetime: "Time" }.freeze
+  def form_value(model, key, params)
+    col = model&.columns_hash&.[](key.to_s)
+    # A unique column drawn from records already there collides every time:
+    # the factory makes a new value per call.
+    factory = factories.find { it.build_class == model } if col
+    if factory && model.validators_on(key.to_sym).grep(ActiveRecord::Validations::UniquenessValidator).any? &&
+       (FactoryBot.attributes_for(factory.name)[key.to_sym] rescue nil).is_a?(String)
+      return "#{key}: FactoryBot.attributes_for(:#{factory.name})[:#{key}]"
+    end
+    foreign = model&.reflect_on_all_associations(:belongs_to)&.any? { it.foreign_key.to_s == key.to_s }
+    return value_for(key, nil, params) if foreign
+    if col&.type == :integer && col.null
+      params[key.to_sym] = [nil, 0, 1, 2, 5]
+      return "#{key}:"
+    end
+    return value_for(key, COLUMN_TYPES[col&.type], params) unless col && %i[string text].include?(col.type) && !column_source(key.to_s, models)
+
+    fixed = factory_value(model, key.to_s) or return value_for(key, nil, params)
+    params[key.to_sym] = [fixed, "holdfast text", ""]
+    "#{key}:"
+  end
+
+  def factory_value(model, key)
+    factory = factories.find { it.build_class == model } or return nil
+    record = FactoryBot.build(factory.name)
+    value = record[key]
+    return nil unless value.is_a?(String) && record.valid?
+
+    record[key] = "holdfast text"
+    record.valid?
+    value if record.errors[key.to_sym].any?
+  rescue StandardError
+    nil
+  end
+
   # An end time drawn apart from its start broke a duration rule at nearly
   # every draw; draw it as minutes after the start instead.
   DURATIONS = [30, 60, 90, 120, 180, 15, 0, -30, 240, 600].freeze
@@ -248,7 +307,8 @@ module Propose
         next "#{key}: ENV[#{auth[:params][key].inspect}]" if auth[:params][key]
 
         if kind == :nested
-          "#{key}: { #{attribute.map { value_for(it, nil, params) }.join(", ")} }"
+          form = model_for(key)
+          "#{key}: { #{attribute.map { form_value(form, it, params) }.join(", ")} }"
         elsif kind == :upload
           # Drawn text sent as a file, so the action runs past its upload.
           params[key] = :text
@@ -624,6 +684,7 @@ module Propose
           count = "world_size(:#{var}, #{range})"
           count = "[#{count}, #{(once.any? ? once : assocs).map { "#{it.to_s.pluralize}.size" }.join(once.any? ? ", " : " * ")}].min" if assocs.any?
           lines << "#{var} = Array.new(#{count}) { |i| create(:#{factory.name}, #{(picks + limits).join(", ")}) }"
+          lines.concat(settle_lines(var, model, made.keys.map { it.to_s.pluralize }))
         end
         # The largest each can be: a child pairs with every parent up to it.
         made[factory.name] = assocs.empty? ? root_sizes(factory).max : sizes.inject(1) { |a, b| a * b }.clamp(2, 6)
@@ -851,6 +912,8 @@ end
       fs = armed.select { reached.(d).include?(it.service) }.map(&:name)
       spec << "failures: %i[#{fs.join(" ")}]" unless fs.empty?
       spec << "pause_at: :batch_load" if d.kind == :job
+      fresh = d.body.to_s.scan(/(\w+): FactoryBot\.attributes_for/).flatten.uniq
+      spec << "fresh: %i[#{fresh.join(" ")}]" if fresh.any?
       out << "  action(#{[":#{d.name}", *spec].join(", ")}) #{d.body}\n"
     end
     out << "end\n"
@@ -896,8 +959,13 @@ end
   # Money conserved: a record with an amount and a status, and its payments
   # (or charges) with an amount and a status. What a settled record says it
   # took must be what was captured for it, and nothing for any other status.
-  def money_invariants
-    models.flat_map do |model|
+  MoneyRule = Data.define(:model, :amount, :settled, :assoc, :child, :paid, :captured, :kind) do
+    def name = "#{model.model_name.singular}_#{amount}_matches_#{assoc.name}_captured"
+    def owner = child.reflect_on_all_associations(:belongs_to).find { it.foreign_key.to_s == assoc.foreign_key.to_s }&.name
+  end
+
+  def money_rules
+    @money_rules ||= models.flat_map do |model|
       amount = model.column_names.find { it.match?(AMOUNT) } or next []
       settled = statuses(model).grep(SETTLED)
       next [] if settled.empty?
@@ -914,19 +982,39 @@ end
         # different amounts; the rule compares one kind with the amount it
         # pays, and is not drafted when nothing says which kind that is.
         kind = kind_filter(model, amount, child) or next
-        name = "#{model.model_name.singular}_#{amount}_matches_#{assoc.name}_captured"
-        <<~RUBY.chomp
-          # drafted, check it is a real rule: a #{settled.join("/")} #{model.model_name.human.downcase} took its #{amount} through
-          # #{assoc.name} #{captured.join("/")}; any other status took nothing.
-          invariant(:#{name}) do
-            bad = #{model.name}.all.reject do |record|
-              taken = #{child.name}.where(#{assoc.foreign_key}: record.id, status: #{captured.inspect}#{kind}).sum(:#{paid})
-              taken == (#{settled.inspect}.include?(record.status) ? record.#{amount} : 0)
-            end
-            bad.empty? || "#{model.model_name.plural} \#{bad.map(&:id)}: #{amount} and the #{assoc.name} captured for them differ"
-          end
-        RUBY
+        MoneyRule.new(model:, amount:, settled:, assoc:, child:, paid:, captured:, kind:)
       end
+    end
+  end
+
+  def money_invariants
+    money_rules.map do |r|
+      <<~RUBY.chomp
+        # drafted, check it is a real rule: a #{r.settled.join("/")} #{r.model.model_name.human.downcase} took its #{r.amount} through
+        # #{r.assoc.name} #{r.captured.join("/")}; any other status took nothing.
+        invariant(:#{r.name}) do
+          bad = #{r.model.name}.all.reject do |record|
+            taken = #{r.child.name}.where(#{r.assoc.foreign_key}: record.id, status: #{r.captured.inspect}#{r.kind}).sum(:#{r.paid})
+            taken == (#{r.settled.inspect}.include?(record.status) ? record.#{r.amount} : 0)
+          end
+          bad.empty? || "#{r.model.model_name.plural} \#{bad.map(&:id)}: #{r.amount} and the #{r.assoc.name} captured for them differ"
+        end
+      RUBY
+    end
+  end
+
+  # Factories make each record alone: an open invoice and a succeeded
+  # payment for it break the money rule before any action runs. After the
+  # payments are made, each record with a captured one is marked settled at
+  # the amount captured, so the hunt starts from a world the rule allows.
+  def settle_lines(child_var, child_model, made_vars)
+    money_rules.filter_map do |r|
+      next unless r.child == child_model && r.kind.empty? && r.owner
+
+      parent_var = r.owner.to_s.pluralize
+      next unless made_vars.include?(parent_var)
+
+      "#{child_var}.select { #{r.captured.inspect}.include?(it.status) }.group_by(&:#{r.owner}).each { |record, taken| record.update_columns(status: #{r.settled.first.inspect}, #{r.amount}: taken.sum(&:#{r.paid})) } # keeps #{r.name}"
     end
   end
 

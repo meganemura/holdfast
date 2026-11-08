@@ -88,7 +88,7 @@ module Sequences
   STATE_COLUMNS = %w[status state].freeze
   def self.state_of(record) = STATE_COLUMNS.find { record.has_attribute?(it) }&.then { [it, record[it]] }
 
-  Action = Struct.new(:name, :params, :pause_at, :weight, :block, :failures, keyword_init: true)
+  Action = Struct.new(:name, :params, :pause_at, :weight, :block, :failures, :fresh, keyword_init: true)
 
   # An end drawn from its start: `ends_at: after(:starts_at, minutes: [...])`.
   # Drawn apart, nearly every pair broke a duration rule and the action was
@@ -151,11 +151,11 @@ module Sequences
 
 # An action with a :TODO param does not run; the report lists it with
 # the params to fill, and the rest of the area still runs.
-def action(name, pause_at: nil, weight: 1.0, failures: [], **params, &block)
+def action(name, pause_at: nil, weight: 1.0, failures: [], fresh: [], **params, &block)
   todo = params.select { |_, spec| spec == :TODO }.keys
   return @skipped[name] = "replace :TODO for #{todo.join(", ")}" if todo.any?
 
-  @actions[name] = Action.new(name:, params:, pause_at:, weight:, block:, failures:)
+  @actions[name] = Action.new(name:, params:, pause_at:, weight:, block:, failures:, fresh:)
   end
 
 # How an outside service fails: the block arms the fake. An action that
@@ -407,10 +407,19 @@ end
           Sequences.tally(:"#{first_name} = #{second_name}", "refused: option on one door only (#{options.join(", ")})")
           next
         end
+        # One door makes a new value (a unique email) where the other draws
+        # one that exists: a refusal on one side is the input, not the code.
+        fresh = (Array(first.fresh) + Array(second.fresh)).map(&:to_s) & unmatched.map { it.delete_suffix("_from") }
+        if fresh.any?
+          Sequences.tally(:"#{first_name} = #{second_name}", "refused: one door makes a new #{fresh.join(", ")}, the other draws one")
+          next
+        end
         Sequences.tally(:"#{first_name} = #{second_name}", one[:accepted] || two[:accepted] ? "ok" : "refused: both")
         # Rows only: a desk can answer a refusal with a notice where the API
         # answers 409, and both wrote nothing.
-        own = unmatched.to_set { "#{table}.#{it}" }
+        # A column a door fills with a new value per call (`fresh:`, a
+        # unique email) differs by construction.
+        own = (unmatched.map { it.delete_suffix("_from") } + Array(first.fresh) + Array(second.fresh)).to_set { "#{table}.#{it}" }
         compare!("two doors to #{table} disagree", one, two, first_name, second_name, outcome: false, noise: own)
       end
       check_invariants("after #{first_name} = #{second_name}")
@@ -625,8 +634,12 @@ end
       # request raised names the param.
       raised = @ctx.http.request&.env&.[]("action_dispatch.exception") if result >= 400
       body = raised.respond_to?(:param) ? "missing param #{raised.param}" : "#{raised.class.name}: #{raised.message}" if raised
-      # An HTML error page says what went wrong in its title.
-      body = body[%r{<title>(.*?)</title>}m, 1] || body if body&.lstrip&.start_with?("<")
+      # A form rendered again says why in its record's errors; its title
+      # names only the layout. Another HTML error page says it in its title.
+      if body&.lstrip&.start_with?("<")
+        errors = invalid_record&.errors&.full_messages
+        body = errors&.any? ? errors.first(2).join("; ") : (body[%r{<title>(.*?)</title>}m, 1] || body)
+      end
       alert ||= body.strip[0, 80] if body && !body.strip.empty?
       alert ? "HTTP #{result} refused: #{alert}" : "HTTP #{result}"
     rescue *@definition.refusal_classes => e
@@ -635,6 +648,12 @@ end
       raise
     rescue StandardError => e
       raise Failure.new("#{action.name} raised #{e.class}: #{e.message}\n  #{e.backtrace.grep(%r{/app/}).first(3).join("\n  ")}", log: @log, definition: @definition)
+    end
+
+    def invalid_record
+      controller = @ctx.http.controller or return nil
+      controller.instance_variables.lazy.map { controller.instance_variable_get(it) }
+                .find { it.respond_to?(:errors) && it.errors.respond_to?(:full_messages) && it.errors.any? }
     end
 
     def at_clock(&block)
