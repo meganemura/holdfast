@@ -7,6 +7,13 @@ require "hegel"
 require "json"
 
 module Sequences
+  # Raised between cases once shrinking has had its share of the time.
+  class ShrinkCut < Exception; end # rubocop:disable Lint/InheritException
+
+  # Seconds shrinking may take after the first failure. A two-step repro
+  # found in a second spent the rest of a 150 s area shrinking the world.
+  SHRINK_SECONDS = Integer(ENV.fetch("SEQ_SHRINK_SECONDS", "60"))
+
   class Failure < StandardError
     attr_reader :log, :definition
 
@@ -488,10 +495,11 @@ end
                         log: @log, definition: @definition)
     end
 
-    def step(name, choice, failure: nil)
+    def step(name, choice, failure: nil, again: false)
       action = @definition.actions.fetch(name)
       entry = { step: name, args: choice, at: @clock&.iso8601, label: describe(action, choice) }
       entry.merge!(failure:, label: "[#{failure}] #{entry[:label]}") if failure
+      entry[:label] = "again, as sent before: #{entry[:label]}" if again
       @log << entry
       $stderr.puts "  step #{entry[:step]} #{entry[:label]}" if ENV["SEQ_DEBUG"]
       entry[:outcome] = at_clock do
@@ -500,6 +508,12 @@ end
       end
       Sequences.tally(failure ? :"#{name} [#{failure}]" : name, entry[:outcome])
       check_invariants("after #{name}")
+    end
+
+    # Steps the app accepted, which a double click or a retried request
+    # would send once more.
+    def accepted_steps
+      @log.select { |e| @definition.actions.key?(e[:step]) && e[:outcome] && !Sequences.kind(e[:outcome]).match?(/refused|HTTP 4/) }
     end
 
     # Dates and times the app stored (due dates, deadlines, pauses), where a
@@ -796,6 +810,15 @@ end
           runner.twins_step(first_name, first_choice, second_name, runner.same_inputs(first, first_choice, second, draw), table)
         end
       end
+      # The same form sent twice (a double click, a retried request): one
+      # guest signed in twice on one day met a unique index only this way.
+      rule(:again, weight: 1.0) do |tc|
+        draw = Draw.new(tc)
+        done = runner.accepted_steps
+        draw.assume(!done.empty?)
+        sent = done.fetch(draw.index(done.size))
+        runner.step(sent[:step], sent[:args], failure: sent[:failure], again: true)
+      end
       if definition.clock_start
         rule(:tick, weight: definition.tick_weight) do |tc|
           draw = Draw.new(tc)
@@ -872,11 +895,17 @@ end
     report[:verdict] = "unchecked"
     report[:reason] = e.message
     raise
+  rescue ShrinkCut
+    # Shrinking had its share of the time: the shortest sequence found so
+    # far stands, and the run ends as a failure like any other.
+    report[:verdict] = "failure"
+    report[:reason] = @first_failure.message.strip.sub(/\A(.*)$/) { "#{$1} (shrinking stopped after #{SHRINK_SECONDS} s)" }
+    raise Failure.new(report[:reason].lines.first.chomp, log: @first_failure.log, definition:)
   rescue SignalException => e
     raise unless @first_failure
 
-    # The time limit cut shrinking: the failure found first still stands,
-    # with its own sequence, only longer than the shortest.
+    # The time limit cut shrinking: the shortest failure so far still
+    # stands, with its own sequence.
     report[:verdict] = "failure"
     report[:reason] = @first_failure.message.strip.sub(/\A(.*)$/) { "#{$1} (not shrunk: the time limit cut shrinking)" }
     $stderr.puts "Sequences::Failure:\n#{report[:reason]}"
@@ -997,11 +1026,15 @@ end
                phases: shrink ? nil : %i[generate],
                suppress_health_check: %i[too_slow filter_too_much]) do |tc|
       count += 1
+      raise ShrinkCut if first_failure && Process.clock_gettime(Process::CLOCK_MONOTONIC) - started - first_failure[1] > SHRINK_SECONDS
+
       begin
         run_case(definition, tc, step_count, noise)
       rescue Failure => e
         first_failure ||= [count, Process.clock_gettime(Process::CLOCK_MONOTONIC) - started]
-        @first_failure ||= e
+        # Keep the shortest sequence of the same failure seen while shrinking.
+        @first_failure = e if @first_failure.nil? ||
+                              (e.log.size < @first_failure.log.size && e.to_s.lines.first == @first_failure.to_s.lines.first)
         raise
       end
     end

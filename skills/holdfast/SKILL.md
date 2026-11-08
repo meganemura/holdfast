@@ -75,7 +75,7 @@ Evidence goes under `.holdfast/evidence/<slug>` (the row's `next` names the path
 
 `holdfast run` with no change drafts one sequences definition per write area into `.holdfast/sequences/` and runs random orders, interleavings, time zones and second doors under invariants (`--budget`, default 600 s). The first line says how much ran: `unreached: N of M actions`. An area that reached under half its actions is never clean; fix its setup or sign-in, then run again. Hunt rows lead you to suspicions: confirm each with `holdfast check`.
 
-Each run tries random orders of an area's actions from a world of drawn size, two actions interleaved at a call into an outside client, a job held after its first batch load while another action changes a row it loaded, a clock at day edges in other time zones, the same instant in another UTC offset, and a desk route and an API endpoint about one table from the same state. Any HTTP 5xx, and any exception the area does not list as a refusal, fails.
+Each run tries random orders of an area's actions from a world of drawn size, two actions interleaved at a call into an outside client, a job held after its first batch load while another action changes a row it loaded, a clock at day edges in other time zones, the same instant in another UTC offset, a request the app accepted sent once more with the same inputs (a double click or a retry, shown as `again, as sent before:`), and a desk route and an API endpoint about one table from the same state. Any HTTP 5xx, and any exception the area does not list as a refusal, fails.
 
 The first hunt writes `.holdfast/sequences/invariants.rb`. Its drafted rules run as written: delete one only when the app means otherwise. Add the rules only you know in the same shape; each returns true when it holds, or a message that names the rows that break it:
 
@@ -89,7 +89,7 @@ Sequences.everywhere do
 end
 ```
 
-A `bug_suspect` row names the broken rule, and its log holds the shortest sequence as a numbered narrative and an `it` block that replays it. When the time limit cut shrinking, the row says `not shrunk` and the log holds the first failing sequence instead. A twins pair the two doors cannot feed the same inputs (one picks a record the other takes from the sign-in, or one makes a new unique value) is listed as not reached; drop the `twins` line or give both doors the same params. A partly checked area lists each action that was only refused (with the refusal and the param to change) or never drawn: make the record in the area's `setup`, narrow a `pool`, or change the draws, then run again.
+A `bug_suspect` row names the broken rule, and its log holds the shortest sequence as a numbered narrative and an `it` block that replays it. Shrinking stops 60 s after the first failure (`SEQ_SHRINK_SECONDS`), and the row then says `shrinking stopped`; when the area's time limit cut it first, the row says `not shrunk`. Either way the log holds the shortest sequence found so far. A twins pair the two doors cannot feed the same inputs (one picks a record the other takes from the sign-in, or one makes a new unique value) is listed as not reached; drop the `twins` line or give both doors the same params. A partly checked area lists each action that was only refused (with the refusal and the param to change) or never drawn: make the record in the area's `setup`, narrow a `pool`, or change the draws, then run again.
 
 ## When setup fails
 

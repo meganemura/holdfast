@@ -122,7 +122,7 @@ rows: .holdfast/check/skip-tentative/check.jsonl; kept specs: spec/holdfast/skip
 
 ## Hunt when nothing changed
 
-`holdfast run` with no change drafts one sequence definition per write area of the app (routes, Grape endpoints, jobs) into `.holdfast/sequences/`. It then runs random orders of their actions against the test database, under invariants, other time zones, two actions interleaved at an outside call, and a job held after its first batch load. A failure is shrunk to the shortest sequence. `--budget SECONDS` caps the run (default 600). On the clinic app, with a budget of 120 seconds:
+`holdfast run` with no change drafts one sequence definition per write area of the app (routes, Grape endpoints, jobs) into `.holdfast/sequences/`. It then runs random orders of their actions against the test database, under invariants, other time zones, two actions interleaved at an outside call, a job held after its first batch load, and an accepted request sent once more. A failure is shrunk to the shortest sequence, for at most 60 seconds. `--budget SECONDS` caps the run (default 600). On the clinic app, with a budget of 120 seconds:
 
 ```text
 # holdfast
