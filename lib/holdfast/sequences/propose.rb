@@ -203,6 +203,26 @@ module Propose
     end
   end
 
+  # A body param a controller finds a record by
+  # (`Member.find_by!(email: params.expect(guest: [:host_email])[:host_email])`)
+  # is drawn from that record: free text names no member.
+  def param_lookups
+    @param_lookups ||= Dir[Rails.root.join("app/controllers/**/*.rb")].each_with_object({}) do |file, found|
+      Prism.parse_file(file).value.breadth_first_search do |c|
+        next false unless c.is_a?(Prism::CallNode) && %i[find_by find_by!].include?(c.name) && c.receiver.is_a?(Prism::ConstantReadNode)
+
+        c.arguments&.arguments&.grep(Prism::KeywordHashNode)&.flat_map(&:elements)&.each do |pair|
+          next unless pair.key.is_a?(Prism::SymbolNode) && pair.value.slice.include?("params")
+
+          key = pair.value.slice.scan(/\[:(\w+)\]/).flatten.last or next
+          model = c.receiver.name.to_s.safe_constantize
+          found[key.to_sym] ||= [model, pair.key.unescaped] if model.is_a?(Class) && model < ActiveRecord::Base
+        end
+        false
+      end
+    end
+  end
+
   # How an endpoint file finds a path's record: `Invoice.find(params[:id])`,
   # `current_member.invoices.find_by!(number: params[:number])`. Grape names
   # `/guests/:id` after the URL, not the model it finds.
@@ -223,7 +243,11 @@ module Propose
   # +params+.
   def value_for(key, type, params)
     key = key.to_s
-    if key.end_with?("_id") && (model = model_for(key))
+    if !key.end_with?("_id") && (found = param_lookups[key.to_sym]) && found[1] != key
+      var = :"#{key}_from"
+      params[var] = pool_name(found[0])
+      "#{key}: #{var}.#{found[1]}"
+    elsif key.end_with?("_id") && (model = model_for(key))
       var = model.model_name.singular.to_sym
       var = key.delete_suffix("_id").to_sym if params.key?(var) && params[var] != pool_name(model)
       params[var] = pool_name(model)
@@ -766,8 +790,13 @@ module Propose
     selected.flat_map do |a|
       stats[a.name][:writes].keys.grep(/\Ainsert /).map { it.split.last }
                           .select { |t| a.name.to_s.include?(t) || a.name.to_s.include?(t.singularize) }
-    end.uniq
+    end.uniq - copied_from(selected)
   end
+
+  # A table an action copies a value from (`guest_email_from: :guest_passes`)
+  # is made in the setup even when the area inserts into it: an empty pool
+  # leaves the action never drawn.
+  def copied_from(selected) = selected.flat_map { |d| d.params.select { |k, v| k.to_s.end_with?("_from") && v.is_a?(Symbol) }.values.map(&:to_s) }.uniq
 
   def pool_tables(selected) = selected.flat_map { it.params.values }.grep(Symbol).map(&:to_s)
 
