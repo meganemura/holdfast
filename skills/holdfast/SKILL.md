@@ -77,7 +77,7 @@ Evidence goes under `.holdfast/evidence/<slug>` (the row's `next` names the path
 
 Each run tries random orders of an area's actions from a world of drawn size, two actions interleaved at a call into an outside client, a job held after its first batch load while another action changes a row it loaded, a clock at day edges in other time zones, the same instant in another UTC offset, a request the app accepted sent once more with the same inputs (a double click or a retry, shown as `again, as sent before:`), and a desk route and an API endpoint about one table from the same state. Any HTTP 5xx, and any exception the area does not list as a refusal, fails.
 
-The first hunt writes `.holdfast/sequences/invariants.rb`. Its drafted rules run as written: delete one only when the app means otherwise. Add the rules only you know in the same shape; each returns true when it holds, or a message that names the rows that break it:
+The first hunt writes `.holdfast/sequences/invariants.rb`. Its drafted rules (money a record took, the order a waiting status is left in, and one row for each `has_one` no unique index holds) run as written: delete one only when the app means otherwise. Add the rules only you know in the same shape; each returns true when it holds, or a message that names the rows that break it:
 
 ```ruby
 Sequences.everywhere do

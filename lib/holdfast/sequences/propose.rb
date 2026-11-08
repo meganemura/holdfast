@@ -787,10 +787,22 @@ module Propose
           # there are no more children than parents.
           held = conn_unique_columns(model)
           once = assocs.select { held.include?(model.reflect_on_association(it)&.foreign_key.to_s) }
-          once.each { |a| picks[assocs.index(a)] = "#{a}: #{a.to_s.pluralize}[i]" }
+          # A parent that `has_one` of these takes one only if it has none
+          # yet: a trait (an insured patient) may have made it one already.
+          single = assocs.select do |a|
+            parent = model.reflect_on_association(a)&.klass rescue nil
+            parent&.reflect_on_all_associations(:has_one)&.any? { !it.through_reflection? && !it.options[:as] && (it.klass rescue nil) == model }
+          end
+          single.each do |a|
+            fk = model.reflect_on_association(a).foreign_key
+            lines << "free_#{a.to_s.pluralize} = #{a.to_s.pluralize}.reject { #{model.name}.exists?(#{fk}: it.id) }"
+          end
+          once |= single
+          list = ->(a) { single.include?(a) ? "free_#{a.to_s.pluralize}" : a.to_s.pluralize }
+          once.each { |a| picks[assocs.index(a)] = "#{a}: #{list.(a)}[i]" }
           range = assocs.empty? ? root_sizes(factory) : "1..#{most}"
           count = "world_size(:#{var}, #{range})"
-          count = "[#{count}, #{(once.any? ? once : assocs).map { "#{it.to_s.pluralize}.size" }.join(once.any? ? ", " : " * ")}].min" if assocs.any?
+          count = "[#{count}, #{(once.any? ? once : assocs).map { "#{list.(it)}.size" }.join(once.any? ? ", " : " * ")}].min" if assocs.any?
           lines << "#{var} = Array.new(#{count}) { |i| create(:#{factory.name}, #{(picks + limits).join(", ")}) }"
           lines.concat(settle_lines(var, model, made.keys.map { it.to_s.pluralize }))
         end
@@ -1232,7 +1244,32 @@ end
     end
   end
 
-  def drafted_invariants = money_invariants + order_invariants
+  # One child each: a `has_one` the database does not hold to one row (no
+  # unique index on its key) is held by the code alone, and two requests at
+  # once can leave two, of which the app then reads either.
+  def one_child_invariants
+    models.flat_map do |model|
+      model.reflect_on_all_associations(:has_one).filter_map do |assoc|
+        next if assoc.through_reflection? || assoc.options[:as] || (assoc.scope && assoc.scope.arity != 0)
+
+        child = assoc.klass rescue next
+        fk = assoc.foreign_key.to_s
+        next unless child.table_exists? && child.column_names.include?(fk)
+        next if child.connection.indexes(child.table_name).any? { it.unique && it.columns.is_a?(Array) && it.columns.first == fk && it.columns.size == 1 && it.where.nil? }
+
+        rows = assoc.scope ? "#{model.name}.reflect_on_association(:#{assoc.name}).then { it.klass.instance_exec(&it.scope) }" : child.name
+        <<~RUBY.chomp
+          # drafted, check it is a real rule: #{model.name} has_one :#{assoc.name}, and no unique index holds it to one row.
+          invariant(:#{model.model_name.singular}_has_one_#{assoc.name}) do
+            bad = #{rows}.where.not(#{fk}: nil).group(:#{fk}).having("COUNT(*) > 1").count.keys
+            bad.empty? || "#{model.model_name.plural} \#{bad}: more than one #{assoc.name}"
+          end
+        RUBY
+      end
+    end
+  end
+
+  def drafted_invariants = money_invariants + order_invariants + one_child_invariants
 
   # The drafted rules are live; the TODOs ask for the rest. A run with no
   # invariants still checks errors, 5xx, zones, offsets and doors.

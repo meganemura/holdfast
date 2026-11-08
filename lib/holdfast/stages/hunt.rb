@@ -52,9 +52,10 @@ module Holdfast
 
       # The first line of a hunt says how much of it ran: an action that was
       # refused every time, or never drawn, checked nothing, and an area that
-      # reached under half its actions is not listed as clean.
+      # reached under half its actions is not listed as clean. An area that
+      # failed stopped at its failure, so its reach says nothing about setup.
       def self.reach_row(change, table)
-        counts = table.filter_map { |r| r["reached"].to_s[%r{(\d+)/(\d+)}] && [r, $1.to_i, $2.to_i] }
+        counts = table.filter_map { |r| r["verdict"] != "FAILURE" && r["reached"].to_s[%r{(\d+)/(\d+)}] && [r, $1.to_i, $2.to_i] }
         total = counts.sum { _1[2] }
         reached = counts.sum { _1[1] }
         return nil if total.zero? || reached == total
