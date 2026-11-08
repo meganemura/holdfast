@@ -850,6 +850,7 @@ end
   end
 
   def self.explore_cases(definition, test_cases: 100, step_count: 12, seed: nil)
+    @first_failure = nil
 
     Rails.application.eager_load!
     quiet_errors
@@ -870,6 +871,15 @@ end
   rescue SetupError => e
     report[:verdict] = "unchecked"
     report[:reason] = e.message
+    raise
+  rescue SignalException => e
+    raise unless @first_failure
+
+    # The time limit cut shrinking: the failure found first still stands,
+    # with its own sequence, only longer than the shortest.
+    report[:verdict] = "failure"
+    report[:reason] = @first_failure.message.strip.sub(/\A(.*)$/) { "#{$1} (not shrunk: the time limit cut shrinking)" }
+    $stderr.puts "Sequences::Failure:\n#{report[:reason]}"
     raise
   rescue Exception => e # rubocop:disable Lint/RescueException
     report[:verdict] = "failure"
@@ -989,8 +999,9 @@ end
       count += 1
       begin
         run_case(definition, tc, step_count, noise)
-      rescue Failure
+      rescue Failure => e
         first_failure ||= [count, Process.clock_gettime(Process::CLOCK_MONOTONIC) - started]
+        @first_failure ||= e
         raise
       end
     end
