@@ -31,6 +31,7 @@ class HuntTest < Minitest::Test
       out, status = Open3.capture2e({ "BUNDLE_GEMFILE" => File.join(app, "Gemfile") }, RbConfig.ruby, File.join(ROOT, "bin", "holdfast"), "run", "--budget", "60", chdir: app)
       assert_equal 2, status.exitstatus, out
       assert_includes out, "nothing in the app changed against main"
+      refute_includes out, "HUNT REACHED LITTLE", "no area of the clinic reached under half its actions"
       rows = File.readlines(File.join(app, ".holdfast", "verdicts.jsonl")).map { JSON.parse(_1) }
       area = rows.find { _1["target"] == "sequences: check_ins" }
       assert area, out

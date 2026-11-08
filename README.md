@@ -128,7 +128,7 @@ rows: .holdfast/check/skip-tentative/check.jsonl; kept specs: spec/holdfast/skip
 # holdfast
 
 nothing in the app changed against main (27257f9)
-note: HUNT REACHED LITTLE: unreached: 1 of 2 actions (refused every time or never drawn); 0 of 1 areas reached under half
+note: hunt: unreached: 1 of 2 actions (refused every time or never drawn); 0 of 1 areas reached under half
 seconds: record 10.1, hunt 16.8
 
 unintended_change=0 bug_suspect=1 unchecked=1 intended_change=0 clean=0

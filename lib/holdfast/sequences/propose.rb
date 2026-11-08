@@ -148,7 +148,7 @@ module Propose
   # Path segments become pool records: `/loans/:id/renew` takes a Loan. In a
   # nested path the parent is read from the child (`closure.branch_id`), so
   # the two always match.
-  def path_params(path, params)
+  def path_params(path, params, lookups: {})
     resource = path.split("/").reject { it.empty? || it.start_with?(":") }
     segments = path.scan(/:(\w+)/).flatten.map do |key|
       key = key.to_sym
@@ -156,6 +156,11 @@ module Propose
     end
     path.gsub(/:(\w+)/) do
       key = $1.to_sym
+      if (found = lookups[key])
+        var = found[0].model_name.singular
+        params[var.to_sym] = pool_name(found[0])
+        next "\#{#{var}.#{found[1]}}"
+      end
       model = segments.assoc(key)[1]
       child = segments.map(&:last).compact.find do |m|
         m != model && model && m.reflect_on_all_associations(:belongs_to).any? { !it.polymorphic? && it.klass == model }
@@ -196,6 +201,22 @@ module Propose
         false
       end
     end
+  end
+
+  # How an endpoint file finds a path's record: `Invoice.find(params[:id])`,
+  # `current_member.invoices.find_by!(number: params[:number])`. Grape names
+  # `/guests/:id` after the URL, not the model it finds.
+  def endpoint_lookups(file)
+    return {} unless file && File.file?(file)
+
+    text = File.read(file)
+    found = {}
+    text.scan(/([A-Za-z_]\w*)(?:\([^)]*\))?(?:\.where\([^)]*\))?\.find_by!?\((\w+):\s*params\[:(\w+)\]\)/) { |word, col, key| found[key.to_sym] ||= [word, col] }
+    text.scan(/([A-Za-z_]\w*)\.find\(params\[:(\w+)\]\)/) { |word, key| found[key.to_sym] ||= [word, "id"] }
+    found.filter_map do |key, (word, col)|
+      model = word.match?(/\A[A-Z]/) ? word.safe_constantize : model_for(word.singularize)
+      [key, [model, col]] if model.is_a?(Class) && model < ActiveRecord::Base && model.column_names.include?(col)
+    end.to_h
   end
 
   # One body entry for a param: the value expression, with its spec added to
@@ -346,7 +367,7 @@ module Propose
       next if path.include?("(")
 
       params = {}
-      url = path_params(path, params)
+      url = path_params(path, params, lookups: endpoint_lookups(route.app.source&.source_location&.first))
       # Grape lists a nested param as "lines[sku]" beside "lines"; the draft
       # sends the parent as one Hash (an Array of one Hash when its type is
       # Array), each child drawn under a name of its own.

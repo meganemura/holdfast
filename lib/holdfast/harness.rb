@@ -45,7 +45,7 @@ module Holdfast
         end
       end
       reach = verdicts.find { _1.target == "(hunt)" }
-      notes.unshift("HUNT REACHED LITTLE: #{reach.reason}") if reach
+      notes.unshift("#{reach.reason.include?("; 0 of ") ? "hunt" : "HUNT REACHED LITTLE"}: #{reach.reason}") if reach
       notes << "sequences: not run; add --sequences before a pull request" if change.changed? && !sequences
       Result.new(change:, verdicts: verdicts.sort_by { [_1.target == "(hunt)" ? -1 : KINDS.index(_1.kind), _1.stage == "caller" ? 0 : 1, _1.target] }, notes:, seconds: timings)
     end
