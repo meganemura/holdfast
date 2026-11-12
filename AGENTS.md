@@ -13,7 +13,7 @@ holdfast checks a Rails app by running it. `holdfast check` turns suspicions wri
 - `lib/holdfast/record.rb` learns once how the app runs its tests (framework, helper, database names) and keeps it in the app's `.holdfast/record.json`. `lib/holdfast/change.rb` reads base and head; the working tree becomes a commit through a private index.
 - `lib/holdfast/harness.rb` runs the stages of `holdfast run`: `stages/select.rb` (targets from jitcatch's change brief), `stages/fill.rb` (pins, run inside the app with branchout), `stages/diff.rb` (base and head through jitcatch's runner), `stages/fold.rb` (one row per target), `stages/hunt.rb`, and `stages/observe.rb`.
 - `lib/holdfast/sequences/` is the hunt. `propose.rb` drafts one definition per write area, `sequences.rb` runs a definition inside the app's test process (it needs hegeltest there), and `run.rb` runs every area, each on a numbered database. The hunt stage calls them by path.
-- `lib/holdfast/tools.rb` loads jitcatch and finds branchout. Neither is on RubyGems yet, so the gemspec does not list them, and a stage that needs one says how to install it.
+- `lib/holdfast/tools.rb` loads jitcatch and finds branchout for the stages of `holdfast run`.
 - `skills/holdfast/SKILL.md` is the agent skill that ships in the gem.
 - `test/fixture/clinic` is a small Rails app on PostgreSQL with two planted defects, a sweep that charges tentative appointments and a sweep that overwrites a check-in made after its load. The skill's examples and the README's output run against it.
 
@@ -24,11 +24,11 @@ This repository is intended for public release. Write all committed text in Engl
 ## Rules
 
 - Ruby 3.4 or newer: hegeltest needs it, and the hunt uses `it`.
-- hegeltest is the one runtime dependency, pinned exactly. jitcatch and branchout are loaded only where a stage uses them. Add a dependency only with the owner's approval, pinned exactly, at least 7 days past its release.
+- The runtime dependencies are hegeltest, pinned exactly, and jitcatch and branchout (`~> 0.1`), which only the stages of `holdfast run` load. Add a dependency only with the owner's approval, pinned exactly, at least 7 days past its release.
 - Comments say only a non-obvious why. Each file starts with its responsibility.
 - Tests prove behavior by running holdfast on the fixture app. A test never greps source.
 - A change to a suspicion form or a row changes `skills/holdfast/SKILL.md` in the same commit, and every YAML example there runs in `test/skill_examples_test.rb`. A change to README.md changes README.ja.md in the same commit: natural Japanese, one sentence per line, no em dash. The output in both READMEs comes from a real run on the fixture.
-- Every change that a gem user can notice adds a line under `## Unreleased` in `CHANGELOG.md`.
+- Every change that a gem user can notice adds a line under `## [Unreleased]` in `CHANGELOG.md`.
 - A release, a gem push, and a change of the repository's visibility are the owner's to run.
 
 ## Commands

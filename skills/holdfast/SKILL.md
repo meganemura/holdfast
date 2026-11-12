@@ -7,7 +7,7 @@ description: Run what you suspect instead of leaving it "read only". In a Ruby o
 
 ## Setup
 
-Add `gem "holdfast", require: false` to the app's `:test` group and run `bundle install`; run every command below as `bundle exec holdfast ...` from the app root. `holdfast check` and the hunt need nothing else. `holdfast run` on a change also needs jitcatch and branchout, which are not on RubyGems yet; without them it exits 1 and says how to install them. The app needs RSpec, FactoryBot and a test database.
+Add `gem "holdfast", require: false` to the app's `:test` group and run `bundle install`; run every command below as `bundle exec holdfast ...` from the app root. jitcatch and branchout, which `holdfast run` uses on a change, come with it. The app needs RSpec, FactoryBot and a test database.
 
 ## The loop: read, suspect, check, keep
 

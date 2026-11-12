@@ -28,4 +28,7 @@ Gem::Specification.new do |spec|
   spec.bindir = "bin"
   spec.executables = ["holdfast"]
   spec.add_dependency "hegeltest", Holdfast::HEGELTEST_VERSION
+  # holdfast run compares a change through these two.
+  spec.add_dependency "jitcatch", "~> 0.1"
+  spec.add_dependency "branchout", "~> 0.1"
 end

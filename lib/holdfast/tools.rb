@@ -1,18 +1,10 @@
 module Holdfast
-  # jitcatch and branchout are not on RubyGems yet, so the gemspec cannot
-  # depend on them. `holdfast check` and the hunt need neither; the stages
-  # of `holdfast run` that do ask here and get a message that says what to
-  # install instead of a LoadError.
+  # The stages of `holdfast run` load jitcatch and branchout here, so a
+  # bundle that left them out gets a message instead of a LoadError.
   module Tools
-    SOURCES = {
-      "jitcatch" => "https://github.com/meganemura/jitcatch",
-      "branchout" => "https://github.com/meganemura/branchout"
-    }.freeze
-
     def self.missing(name, use)
-      "#{use} needs the #{name} gem, which is not on RubyGems yet: " \
-        "build it from #{SOURCES.fetch(name)} (`gem build #{name}.gemspec`, then `gem install ./#{name}-*.gem`), " \
-        "and add it to the app's Gemfile when you run holdfast with bundle exec; holdfast check and a hunt work without it"
+      "#{use} needs the #{name} gem, which holdfast depends on: run `bundle install` " \
+        "with holdfast in the app's Gemfile, then run holdfast with bundle exec"
     end
 
     def self.jitcatch!

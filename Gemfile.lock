@@ -2,11 +2,14 @@ PATH
   remote: .
   specs:
     holdfast (0.1.0)
+      branchout (~> 0.1)
       hegeltest (= 0.5.1)
+      jitcatch (~> 0.1)
 
 GEM
   remote: https://rubygems.org/
   specs:
+    branchout (0.1.0)
     drb (2.2.3)
     ffi (1.17.4)
     ffi (1.17.4-aarch64-linux-gnu)
@@ -27,6 +30,7 @@ GEM
       ffi (~> 1.17, >= 1.17.4)
     hegeltest (0.5.1-x86_64-linux)
       ffi (~> 1.17, >= 1.17.4)
+    jitcatch (0.1.0)
     minitest (6.0.6)
       drb (~> 2.0)
       prism (~> 1.5)
@@ -52,6 +56,7 @@ DEPENDENCIES
   minitest (= 6.0.6)
 
 CHECKSUMS
+  branchout (0.1.0) sha256=6aafd487f9355e3d2d99547def8ff90cb278291024b838532e904313837430d4
   drb (2.2.3) sha256=0b00d6fdb50995fe4a45dea13663493c841112e4068656854646f418fda13373
   ffi (1.17.4) sha256=bcd1642e06f0d16fc9e09ac6d49c3a7298b9789bcb58127302f934e437d60acf
   ffi (1.17.4-aarch64-linux-gnu) sha256=b208f06f91ffd8f5e1193da3cae3d2ccfc27fc36fba577baf698d26d91c080df
@@ -69,6 +74,7 @@ CHECKSUMS
   hegeltest (0.5.1-arm64-darwin) sha256=c8865214eec3159a0412e9a07a457d830eb3e0a9e19a5dc33afb898fe876aac0
   hegeltest (0.5.1-x86_64-linux) sha256=7239514bc398865e103aed97c96ae2cec8bbdb399eb1424b428b4f10dff69c57
   holdfast (0.1.0)
+  jitcatch (0.1.0) sha256=8032f6c3ef9e78340a50806cc33b4ad54761c3c36f6c0109df147b0690e2e0a5
   minitest (6.0.6) sha256=153ea36d1d987a62942382b61075745042a2b3123b1cd48f4c3675af9cc7d6f1
   prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
 
