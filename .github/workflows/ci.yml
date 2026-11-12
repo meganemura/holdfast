@@ -6,6 +6,8 @@ on:
       - main
       - queue
   pull_request:
+  # release.yml runs the same jobs on the commit it releases.
+  workflow_call:
 
 permissions:
   contents: read

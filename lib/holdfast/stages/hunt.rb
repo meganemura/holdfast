@@ -87,10 +87,10 @@ module Holdfast
           env["BUNDLE_GEMFILE"] = File.join(change.root, "Gemfile")
           return nil
         end
-        File.write(gemfile, %(eval_gemfile #{File.join(change.root, "Gemfile").inspect}\ngem "hegeltest", "0.4.1", require: false\n))
+        File.write(gemfile, %(eval_gemfile #{File.join(change.root, "Gemfile").inspect}\ngem "hegeltest", "#{Holdfast::HEGELTEST_VERSION}", require: false\n))
         FileUtils.cp(app_lock, "#{gemfile}.lock") unless File.file?("#{gemfile}.lock")
         out, status = Open3.capture2e({ "BUNDLE_GEMFILE" => gemfile }, "bundle", "lock", "--local", chdir: change.root)
-        return row("(sequences)", "unchecked", "could not add hegeltest to a bundle of holdfast's own: #{out.lines.last.to_s.strip}", [], "install hegeltest 0.4.1 for this Ruby, then holdfast run") unless status.success?
+        return row("(sequences)", "unchecked", "could not add hegeltest to a bundle of holdfast's own: #{out.lines.last.to_s.strip}", [], "install hegeltest #{Holdfast::HEGELTEST_VERSION} for this Ruby, then holdfast run") unless status.success?
 
         env["BUNDLE_GEMFILE"] = gemfile
         nil

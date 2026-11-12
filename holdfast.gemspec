@@ -27,5 +27,5 @@ Gem::Specification.new do |spec|
   end
   spec.bindir = "bin"
   spec.executables = ["holdfast"]
-  spec.add_dependency "hegeltest", "0.4.1"
+  spec.add_dependency "hegeltest", Holdfast::HEGELTEST_VERSION
 end

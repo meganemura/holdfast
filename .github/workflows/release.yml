@@ -1,0 +1,147 @@
+name: Release
+
+# GitHub does not start workflows from a push made with the workflow's own
+# token, so a merge that changes the version starts the release and the tag is
+# created last, after the gem is out.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - lib/holdfast/version.rb
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Find a gem version with no tag
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      notes: ${{ steps.notes.outputs.notes }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The API answers an empty list for a missing tag, so a failed request
+      # stops the run instead of reading as "no tag yet" and publishing again.
+      - id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(ruby -Ilib -e 'require "holdfast/version"; puts Holdfast::VERSION')
+          tag="v$version"
+          found=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" --jq "map(select(.ref == \"refs/tags/$tag\")) | length")
+          if [ "$found" != 0 ]; then
+            echo "$tag already exists, so this run releases nothing"
+          else
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          fi
+      # Read before the gem is pushed, so a missing section stops the release
+      # while nothing is published yet.
+      - id: notes
+        if: steps.version.outputs.tag != ''
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          awk -v v="${TAG#v}" 'index($0, "## [" v "]") == 1 {in_version=1; next} /^## /{in_version=0} in_version' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "CHANGELOG.md has no section for ${TAG#v}" >&2
+            exit 1
+          fi
+          delimiter="notes_$(openssl rand -hex 16)"
+          { echo "notes<<$delimiter"; cat notes.md; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Run CI on the release commit
+    needs: check
+    if: needs.check.outputs.tag != ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  # The release environment's approval is the last gate, and only this job
+  # holds the RubyGems OIDC token. It runs no test code.
+  publish:
+    name: Publish the gem
+    needs: [check, test]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "4.0"
+          bundler: none
+      - name: Build the gem
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          gem build holdfast.gemspec
+          test -f "holdfast-${TAG#v}.gem"
+      # RubyGems creates a new gem from a pending trusted publisher only when the
+      # exchange names the account that will own it, and no release of
+      # rubygems/configure-rubygems-credentials sends that yet. 70209 is the
+      # RubyGems.org id of meganemura; an id, unlike a handle, cannot be recycled.
+      - name: Exchange the OIDC token for a RubyGems API key
+        env:
+          RUBYGEMS_OWNER: "70209"
+        run: |
+          jwt=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=rubygems.org" | jq -r .value)
+          response=$(jq -n --arg jwt "$jwt" --arg owner "$RUBYGEMS_OWNER" '{jwt: $jwt, owner: $owner}' |
+            curl -sS -X POST -H "Content-Type: application/json" -H "Accept: application/json" --data @- https://rubygems.org/api/v1/oidc/trusted_publisher/exchange_token)
+          key=$(echo "$response" | jq -r ".rubygems_api_key // empty")
+          if [ -z "$key" ]; then
+            echo "$response" >&2
+            exit 1
+          fi
+          echo "::add-mask::$key"
+          echo "GEM_HOST_API_KEY=$key" >> "$GITHUB_ENV"
+      # A rerun after a successful push gets "Repushing of gem versions is not
+      # allowed"; that is the only failure worth skipping.
+      - name: Push the gem to RubyGems
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          if output=$(gem push "holdfast-${TAG#v}.gem" 2>&1); then
+            echo "$output"
+          elif echo "$output" | grep -q "Repushing of gem versions is not allowed"; then
+            echo "$output"
+          else
+            echo "$output"
+            exit 1
+          fi
+
+  release:
+    name: Create the tag and the GitHub release
+    needs: [check, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # A rerun finds the release already created, so it updates it instead.
+      - name: Create the tag and the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+          NOTES: ${{ needs.check.outputs.notes }}
+        run: |
+          printf '%s\n' "$NOTES" > notes.md
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+          fi

@@ -2,7 +2,7 @@ PATH
   remote: .
   specs:
     holdfast (0.1.0)
-      hegeltest (= 0.4.1)
+      hegeltest (= 0.5.1)
 
 GEM
   remote: https://rubygems.org/
@@ -19,13 +19,13 @@ GEM
     ffi (1.17.4-x86_64-darwin)
     ffi (1.17.4-x86_64-linux-gnu)
     ffi (1.17.4-x86_64-linux-musl)
-    hegeltest (0.4.1)
+    hegeltest (0.5.1)
       ffi (~> 1.17, >= 1.17.4)
-    hegeltest (0.4.1-aarch64-linux)
+    hegeltest (0.5.1-aarch64-linux)
       ffi (~> 1.17, >= 1.17.4)
-    hegeltest (0.4.1-arm64-darwin)
+    hegeltest (0.5.1-arm64-darwin)
       ffi (~> 1.17, >= 1.17.4)
-    hegeltest (0.4.1-x86_64-linux)
+    hegeltest (0.5.1-x86_64-linux)
       ffi (~> 1.17, >= 1.17.4)
     minitest (6.0.6)
       drb (~> 2.0)
@@ -64,10 +64,10 @@ CHECKSUMS
   ffi (1.17.4-x86_64-darwin) sha256=aa70390523cf3235096cf64962b709b4cfbd5c082a2cb2ae714eb0fe2ccda496
   ffi (1.17.4-x86_64-linux-gnu) sha256=9d3db14c2eae074b382fa9c083fe95aec6e0a1451da249eab096c34002bc752d
   ffi (1.17.4-x86_64-linux-musl) sha256=3fdf9888483de005f8ef8d1cf2d3b20d86626af206cbf780f6a6a12439a9c49e
-  hegeltest (0.4.1) sha256=22c879ead29e092182d4ae6bb7514a3013e564f245e91b568c1d7da968836fcb
-  hegeltest (0.4.1-aarch64-linux) sha256=fa9a8373f34f8488a4f9c35c5f55d549b777547f6402dbef3e2d6721083ce3c1
-  hegeltest (0.4.1-arm64-darwin) sha256=44ed3c9b861f562e2c7781741a58331b262651c8cf87ec4cebca8d0be30927d0
-  hegeltest (0.4.1-x86_64-linux) sha256=65791b3a601da9f3d8d8c060890276fd5368859f179656eff474fcfb55b9b68c
+  hegeltest (0.5.1) sha256=18560904850912e39db7f7d85296868d9cb02e9fc1a9c41d57e5a357f3df150a
+  hegeltest (0.5.1-aarch64-linux) sha256=8ea9004140a13fbd00b087295f8f26beb66ac5ea07ce3d1d251030b6f612960a
+  hegeltest (0.5.1-arm64-darwin) sha256=c8865214eec3159a0412e9a07a457d830eb3e0a9e19a5dc33afb898fe876aac0
+  hegeltest (0.5.1-x86_64-linux) sha256=7239514bc398865e103aed97c96ae2cec8bbdb399eb1424b428b4f10dff69c57
   holdfast (0.1.0)
   minitest (6.0.6) sha256=153ea36d1d987a62942382b61075745042a2b3123b1cd48f4c3675af9cc7d6f1
   prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
