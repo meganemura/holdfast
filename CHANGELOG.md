@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.0] - 2026-11-13
 
 First release. holdfast runs what an agent suspects about a Rails app, on base and on head, and keeps the spec that proves it.
 
