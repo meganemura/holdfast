@@ -42,6 +42,10 @@ module Holdfast
 
       params = node.parameters
       params = params.parameters if params.is_a?(Prism::BlockParametersNode)
+      # `_1` and `it` name no parameter a draft could fill by its name.
+      if params.is_a?(Prism::NumberedParametersNode) || params.is_a?(Prism::ItParametersNode)
+        return Result.new(path: nil, data: nil, holes: ["#{@target.name} takes `_1` or `it` parameters; write its inputs in .holdfast/evidence/"], basis:)
+      end
       records = {}
       args = Array(params&.requireds).map do |p|
         param_value(p.name.to_s, nil, records, holes)
@@ -179,7 +183,7 @@ def scope_node(source)
   call = Prism.parse(source.to_s).value.statements&.body&.first
   return nil unless call.is_a?(Prism::CallNode) && call.name == :scope && call.arguments
 
-  call.arguments.arguments[1].then { _1.is_a?(Prism::LambdaNode) ? _1 : call.block }
+  call.arguments.arguments[1].then { _1.is_a?(Prism::LambdaNode) ? _1 : call.block.then { |b| b if b.is_a?(Prism::BlockNode) } }
 end
 
     def method_node(source, name)

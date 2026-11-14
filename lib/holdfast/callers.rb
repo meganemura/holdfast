@@ -106,6 +106,9 @@ module Holdfast
         next unless n.is_a?(Prism::CallNode) && %i[where not].include?(n.name) && n.arguments
 
         n.arguments.arguments.grep(Prism::KeywordHashNode).flat_map(&:elements).each do |pair|
+          # `where(**OPEN)` splats the constant; it names no column.
+          next unless pair.is_a?(Prism::AssocNode)
+
           val = pair.value
           name = val.is_a?(Prism::ConstantReadNode) ? val.name.to_s : val.is_a?(Prism::ConstantPathNode) ? val.name.to_s : nil
           col ||= pair.key.unescaped if name == const && pair.key.is_a?(Prism::SymbolNode)

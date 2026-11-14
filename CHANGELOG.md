@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+- `holdfast run` no longer fails on a changed scope that splats a constant into `where` (`where(**OPEN)`); that scope names no column.
+- A pin is no longer drafted from a scope given as a block argument (`scope :open, &OPEN`): its row names no def found in place of failing.
+- A pin is no longer drafted from a scope whose lambda reads `it` or `_1`: its row asks for the inputs as it does for any other parameter, in place of failing.
+
 ## [0.2.0] - 2026-11-14
 
 - Races and the hunt run on SQLite as well as PostgreSQL: they empty tables with `DELETE` and restart ids through `sqlite_sequence` where PostgreSQL takes `TRUNCATE`, and read stored days with `date()`. On SQLite each side and each hunt worker gets a database file of its own under `.holdfast/db/`, so the app's own test database is never written, and the repro line names that file.
