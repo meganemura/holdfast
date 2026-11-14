@@ -5,10 +5,39 @@ module Propose
 
   FAILURE_NAME: Regexp
 
+  # An app's model class.
+  type model = singleton(ActiveRecord::Base)
+
+  # An app's controller class.
+  type controller = singleton(ActionController::Metal)
+
+  # A draft's params: the pool or draw each block param takes.
+  type draws = Hash[Symbol, Sequences::param_spec]
+
+  # What a controller action reads from params, per key: [model, attribute],
+  # [:date], [:nested, keys], [:nested_list, keys], [:upload] or [:value].
+  type form_read = [ model, Symbol ] | [ :nested | :nested_list, Array[Symbol] ] | [ :date | :upload | :value ]
+
+  # How an endpoint finds a path's record: the model, the column, and the
+  # pool of the caller's own records when it finds only those.
+  type lookup = [ model, String, Symbol? ]
+
+  # How an API caller signs in: [header, model, column, literal conditions, bearer].
+  type api_lookup = [ String, model?, String, Hash[String, String], bool ]
+
+  # The lookups, and the [header, ENV name, bearer] an API compares a header with.
+  type api_auth = { lookups: Array[api_lookup], envs: Array[[ String, String, bool ]] }
+
+  # The params and headers that let a caller into a controller.
+  type auth = { params: Hash[Symbol, String], headers: Hash[String, String] }
+
+  # The sign-in action a desk session takes.
+  type sign_in = { key: String, action: String, controller: String, path: String, body: Array[String], setup: String?, found: String? }
+
   class Draft < Data
     attr_reader name(): Symbol
 
-    attr_reader params(): Hash[Symbol, untyped]
+    attr_reader params(): draws
 
     attr_reader body(): String
 
@@ -18,8 +47,8 @@ module Propose
 
     attr_reader file(): String?
 
-    def self.new: (Symbol name, Hash[Symbol, untyped] params, String body, Symbol kind, String? resource, String? file) -> instance
-                | (name: Symbol, params: Hash[Symbol, untyped], body: String, kind: Symbol, resource: String?, file: String?) -> instance
+    def self.new: (Symbol name, draws params, String body, Symbol kind, String? resource, String? file) -> instance
+                | (name: Symbol, params: draws, body: String, kind: Symbol, resource: String?, file: String?) -> instance
 
     def self.members: () -> [ :name, :params, :body, :kind, :resource, :file ]
 
@@ -45,15 +74,15 @@ module Propose
   # because rbs-inline reads that as applying to every method after it in
   # the file, this class's too.
   class MoneyRule < Data
-    attr_reader model(): untyped
+    attr_reader model(): model
 
     attr_reader amount(): String
 
     attr_reader settled(): Array[String]
 
-    attr_reader assoc(): untyped
+    attr_reader assoc(): ActiveRecord::Reflection::AssociationReflection
 
-    attr_reader child(): untyped
+    attr_reader child(): model
 
     attr_reader paid(): String
 
@@ -61,8 +90,8 @@ module Propose
 
     attr_reader kind(): String
 
-    def self.new: (untyped model, String amount, Array[String] settled, untyped assoc, untyped child, String paid, Array[String] captured, String kind) -> instance
-                | (model: untyped, amount: String, settled: Array[String], assoc: untyped, child: untyped, paid: String, captured: Array[String], kind: String) -> instance
+    def self.new: (model model, String amount, Array[String] settled, ActiveRecord::Reflection::AssociationReflection assoc, model child, String paid, Array[String] captured, String kind) -> instance
+                | (model: model, amount: String, settled: Array[String], assoc: ActiveRecord::Reflection::AssociationReflection, child: model, paid: String, captured: Array[String], kind: String) -> instance
 
     def self.members: () -> [ :model, :amount, :settled, :assoc, :child, :paid, :captured, :kind ]
 
@@ -79,11 +108,11 @@ module Propose
     def owner: () -> Symbol?
   end
 
-  self.@models: Array[untyped]
+  self.@models: Array[model]
 
   self.@lookup_columns: Hash[[ String, Symbol ], String]
 
-  self.@param_lookups: Hash[Symbol, [ untyped, String ]]
+  self.@param_lookups: Hash[Symbol, [ model, String ]]
 
   self.@owned_pools: Hash[Symbol, String]
 
@@ -91,27 +120,27 @@ module Propose
 
   self.@controller_envs: Array[String]
 
-  self.@api_auth: Hash[Symbol, untyped]
+  self.@api_auth: api_auth
 
-  self.@factories: Array[untyped]
+  self.@factories: Array[FactoryBot::Factory]
 
-  self.@grape_mounts: Hash[untyped, String]
+  self.@grape_mounts: Hash[singleton(Grape::API), String]
 
   self.@fakes: Array[[ String, String ]]
 
   self.@http_services: Array[String]
 
-  @grape_mounts: Hash[untyped, String]
+  @grape_mounts: Hash[singleton(Grape::API), String]
 
   @fakes: Array[[ String, String ]]
 
   @http_services: Array[String]
 
-  @models: Array[untyped]
+  @models: Array[model]
 
   @lookup_columns: Hash[[ String, Symbol ], String]
 
-  @param_lookups: Hash[Symbol, [ untyped, String ]]
+  @param_lookups: Hash[Symbol, [ model, String ]]
 
   @owned_pools: Hash[Symbol, String]
 
@@ -119,21 +148,21 @@ module Propose
 
   @controller_envs: Array[String]
 
-  @api_auth: Hash[Symbol, untyped]
+  @api_auth: api_auth
 
-  @factories: Array[untyped]
+  @factories: Array[FactoryBot::Factory]
 
   self.@failures: Array[Failure]
 
   @failures: Array[Failure]
 
-  self.@controller_auth: Hash[untyped, { params: Hash[Symbol, String], headers: Hash[String, String] }]
+  self.@controller_auth: Hash[controller, auth]
 
-  @controller_auth: Hash[untyped, { params: Hash[Symbol, String], headers: Hash[String, String] }]
+  @controller_auth: Hash[controller, auth]
 
-  self.@session_sign_in: Hash[Symbol, untyped]?
+  self.@session_sign_in: sign_in?
 
-  @session_sign_in: Hash[Symbol, untyped]?
+  @session_sign_in: sign_in?
 
   self.@app_text: String
 
@@ -150,11 +179,11 @@ module Propose
   # The model a param or path word names: `loan_id` is a Loan,
   # `pickup_branch_id` a Branch (by a belongs_to of that name), `request_id`
   # an InterlibraryRequest (the one model whose name ends in Request).
-  # : (String | Symbol | nil word) -> untyped
-  def self?.model_for: (String | Symbol | nil word) -> untyped
+  # : (String | Symbol | nil word) -> model?
+  def self?.model_for: (String | Symbol | nil word) -> model?
 
-  # : (untyped model) -> Symbol
-  def self?.pool_name: (untyped model) -> Symbol
+  # : (model model) -> Symbol
+  def self?.pool_name: (model model) -> Symbol
 
   # A string param named like an identifying column (a code, a barcode, an
   # ISBN) reads it from a record the world has: `barcode` from a Copy.
@@ -162,27 +191,31 @@ module Propose
   # table draws from an empty pool.
   IDENTIFIER: Regexp
 
-  # : (String | Symbol key, Array[untyped] models) -> [untyped, String]?
-  def self?.column_source: (String | Symbol key, Array[untyped] models) -> [ untyped, String ]?
+  # : (String | Symbol key, Array[model] models) -> [model, String]?
+  def self?.column_source: (String | Symbol key, Array[model] models) -> [ model, String ]?
 
   # Guessed draws for an untyped numeric param, marked in the draft.
   PERCENTS: Array[Integer]
 
   COUNTS: Hash[Regexp, Array[Integer | String]]
 
-  # : () -> Array[untyped]
-  def self?.models: () -> Array[untyped]
+  # : () -> Array[model]
+  def self?.models: () -> Array[model]
 
   # What a controller action reads from params: key => [model, attribute],
   # [:date], [:nested, keys] for `require(:k).permit(...)`, [:upload], or [:value].
-  # : (untyped controller, String | Symbol action) -> Hash[Symbol, Array[untyped]]
-  def self?.controller_params: (untyped controller, String | Symbol action) -> Hash[Symbol, Array[untyped]]
+  # : (controller controller, String | Symbol action) -> Hash[Symbol, form_read]
+  def self?.controller_params: (controller controller, String | Symbol action) -> Hash[Symbol, form_read]
+
+  # The symbols among +nodes+: `permit(:kind, :seats)` names kind and seats.
+  # : (Array[Prism::node]? nodes) -> Array[Symbol]
+  def self?.symbol_names: (Array[Prism::node]? nodes) -> Array[Symbol]
 
   # Path segments become pool records: `/loans/:id/renew` takes a Loan. In a
   # nested path the parent is read from the child (`closure.branch_id`), so
   # the two always match.
-  # : (String path, Hash[Symbol, untyped] params, ?lookups: Hash[Symbol, Array[untyped]]) -> String
-  def self?.path_params: (String path, Hash[Symbol, untyped] params, ?lookups: Hash[Symbol, Array[untyped]]) -> String
+  # : (String path, draws params, ?lookups: Hash[Symbol, Array[lookup]]) -> String
+  def self?.path_params: (String path, draws params, ?lookups: Hash[Symbol, Array[lookup]]) -> String
 
   # A controller that finds a path's record by another column
   # (`Location.find_by!(code: params[:location_id])`) answers 404 to an id.
@@ -193,19 +226,19 @@ module Propose
   # A body param a controller finds a record by
   # (`Member.find_by!(email: params.expect(guest: [:host_email])[:host_email])`)
   # is drawn from that record: free text names no member.
-  # : () -> Hash[Symbol, [untyped, String]]
-  def self?.param_lookups: () -> Hash[Symbol, [ untyped, String ]]
+  # : () -> Hash[Symbol, [model, String]]
+  def self?.param_lookups: () -> Hash[Symbol, [ model, String ]]
 
   # How an endpoint file finds a path's record: `Invoice.find(params[:id])`,
   # `current_member.invoices.find_by!(number: params[:number])`. Grape names
   # `/guests/:id` after the URL, not the model it finds.
-  # : (String? file) -> Hash[Symbol, Array[untyped]]
-  def self?.endpoint_lookups: (String? file) -> Hash[Symbol, Array[untyped]]
+  # : (String? file) -> Hash[Symbol, Array[lookup]]
+  def self?.endpoint_lookups: (String? file) -> Hash[Symbol, Array[lookup]]
 
   # A pool of the API caller's own records, named `<table>_of_caller`, with
   # the expression that finds them.
-  # : (String owner, String assoc, untyped model) -> Symbol?
-  def self?.owned_pool: (String owner, String assoc, untyped model) -> Symbol?
+  # : (String owner, String assoc, model model) -> Symbol?
+  def self?.owned_pool: (String owner, String assoc, model model) -> Symbol?
 
   # : () -> Hash[Symbol, String]
   def self?.owned_pools: () -> Hash[Symbol, String]
@@ -221,8 +254,8 @@ module Propose
 
   # One body entry for a param: the value expression, with its spec added to
   # +params+.
-  # : (String | Symbol key, String? type, Hash[Symbol, untyped] params) -> String
-  def self?.value_for: (String | Symbol key, String? type, Hash[Symbol, untyped] params) -> String
+  # : (String | Symbol key, String? type, draws params) -> String
+  def self?.value_for: (String | Symbol key, String? type, draws params) -> String
 
   # A form field of a model's column is drawn by the column's type: text in
   # an integer capacity or a time zone refused every draw. A string the
@@ -230,21 +263,21 @@ module Propose
   # from the factory's value, free text and blank.
   COLUMN_TYPES: Hash[Symbol, String]
 
-  # : (untyped model, String | Symbol key, Hash[Symbol, untyped] params) -> String
-  def self?.form_value: (untyped model, String | Symbol key, Hash[Symbol, untyped] params) -> String
+  # : (model? model, String | Symbol key, draws params) -> String
+  def self?.form_value: (model? model, String | Symbol key, draws params) -> String
 
-  # : (untyped model, String key) -> String?
-  def self?.factory_value: (untyped model, String key) -> String?
+  # : (model? model, String key) -> String?
+  def self?.factory_value: (model? model, String key) -> String?
 
   # An end time drawn apart from its start broke a duration rule at nearly
   # every draw; draw it as minutes after the start instead.
   DURATIONS: Array[Integer]
 
-  # : (Hash[Symbol, untyped] params) -> Hash[Symbol, untyped]
-  def self?.pair_ends!: (Hash[Symbol, untyped] params) -> Hash[Symbol, untyped]
+  # : (draws params) -> draws
+  def self?.pair_ends!: (draws params) -> draws
 
-  # : (Hash[Symbol, untyped] params, String call) -> String
-  def self?.block_for: (Hash[Symbol, untyped] params, String call) -> String
+  # : (draws params, String call) -> String
+  def self?.block_for: (draws params, String call) -> String
 
   # : () -> Array[Draft]
   def self?.route_drafts: () -> Array[Draft]
@@ -254,11 +287,11 @@ module Propose
 
   # A Grape param with `values: [...]` draws each listed value and one it
   # refuses; any other param is drawn by its type.
-  # : (String | Symbol key, untyped spec, Hash[Symbol, untyped] params) -> String
-  def self?.grape_value: (String | Symbol key, untyped spec, Hash[Symbol, untyped] params) -> String
+  # : (String | Symbol key, Object? spec, draws params) -> String
+  def self?.grape_value: (String | Symbol key, Object? spec, draws params) -> String
 
-  # : () -> Hash[untyped, String]
-  def self?.grape_mounts: () -> Hash[untyped, String]
+  # : () -> Hash[singleton(Grape::API), String]
+  def self?.grape_mounts: () -> Hash[singleton(Grape::API), String]
 
   # : () -> Array[Draft]
   def self?.job_drafts: () -> Array[Draft]
@@ -292,11 +325,11 @@ module Propose
   # headers["Authorization"].delete_prefix("Bearer ")`), with the record's
   # other conditions (`kind: "staff"`). A lookup with conditions or a bearer
   # prefix gets a record of its own in the setup, with a known token.
-  # : () -> Hash[Symbol, untyped]
-  def self?.api_auth: () -> Hash[Symbol, untyped]
+  # : () -> api_auth
+  def self?.api_auth: () -> api_auth
 
-  # : () -> untyped
-  def self?.api_caller_model: () -> untyped
+  # : () -> model?
+  def self?.api_caller_model: () -> model?
 
   # The record a bearer or conditioned lookup finds, made in the setup.
   # : () -> Array[[String, String, String]]
@@ -309,8 +342,8 @@ module Propose
   # value the app expects instead of a drawn word it always refuses.
   ENV_READ: Regexp
 
-  # : (untyped controller) -> { params: Hash[Symbol, String], headers: Hash[String, String] }
-  def self?.controller_auth: (untyped controller) -> { params: Hash[Symbol, String], headers: Hash[String, String] }
+  # : (controller controller) -> { params: Hash[Symbol, String], headers: Hash[String, String] }
+  def self?.controller_auth: (controller controller) -> { params: Hash[Symbol, String], headers: Hash[String, String] }
 
   # : () -> Array[String]
   def self?.controller_envs: () -> Array[String]
@@ -324,46 +357,46 @@ module Propose
   # : (String text) -> String?
   def self?.session_key: (String text) -> String?
 
-  # : (untyped controller) -> bool
-  def self?.session_reader?: (untyped controller) -> bool
+  # : (controller controller) -> bool
+  def self?.session_reader?: (controller controller) -> bool
 
   # A method's body and the bodies of the controller methods it calls, one
   # call deep: `require_staff` reads the session through `current_staff`.
-  # : (untyped controller, String | Symbol name, ?Integer depth) -> String
-  def self?.reads_through: (untyped controller, String | Symbol name, ?Integer depth) -> String
+  # : (controller controller, String | Symbol name, ?Integer depth) -> String
+  def self?.reads_through: (controller controller, String | Symbol name, ?Integer depth) -> String
 
   # Desk staff that sign in with a password: the setup makes the record with
   # a known one, and the sign-in sends it.
   DESK_PASSWORD: String
 
-  # : () -> Hash[Symbol, untyped]?
-  def self?.session_sign_in: () -> Hash[Symbol, untyped]?
+  # : () -> sign_in?
+  def self?.session_sign_in: () -> sign_in?
 
-  # : () -> Array[untyped]
-  def self?.factories: () -> Array[untyped]
+  # : () -> Array[FactoryBot::Factory]
+  def self?.factories: () -> Array[FactoryBot::Factory]
 
   # The traits that give a signed-in record a role the app checks
   # (`trait :supervisor` with `current_staff.supervisor?` in a guard), so the
   # caller reaches every action instead of only the ones open to all.
-  # : (untyped factory) -> Array[String]
-  def self?.role_traits: (untyped factory) -> Array[String]
+  # : (FactoryBot::Factory factory) -> Array[String]
+  def self?.role_traits: (FactoryBot::Factory factory) -> Array[String]
 
   # A factory the setup may call: every association it declares is a bare
   # name, so the world can hand it records it already made. A factory that
   # derives one (`copy { association :copy, status: "on_loan" }`) encodes a
   # state the app should reach through its own actions.
-  # : (untyped factory) -> Array[Symbol]?
-  def self?.seedable: (untyped factory) -> Array[Symbol]?
+  # : (FactoryBot::Factory factory) -> Array[Symbol]?
+  def self?.seedable: (FactoryBot::Factory factory) -> Array[Symbol]?
 
-  # : (untyped decl) -> bool
-  def self?.encodes_state?: (untyped decl) -> bool
+  # : (FactoryBot::Declaration decl) -> bool
+  def self?.encodes_state?: (FactoryBot::Declaration decl) -> bool
 
   # `branch { association :branch }` and `association :branch` name the
   # record as a bare `branch` does: the world can hand it one it made. Only
   # an override or a trait (`association :copy, status: "on_loan"`) encodes
   # a state.
-  # : (untyped decl) -> bool
-  def self?.plain_association?: (untyped decl) -> bool
+  # : (FactoryBot::Declaration decl) -> bool
+  def self?.plain_association?: (FactoryBot::Declaration decl) -> bool
 
   # The world each area starts from: two of each root record, members three,
   # and each child made from records already there, every pairing once.
@@ -372,33 +405,33 @@ module Propose
 
   # The optional parents a factory's own values name (kind "invoice" and
   # `belongs_to :invoice, optional: true`), which the setup fills.
-  # : (untyped factory) -> Array[Symbol]
-  def self?.named_parents: (untyped factory) -> Array[Symbol]
+  # : (FactoryBot::Factory factory) -> Array[Symbol]
+  def self?.named_parents: (FactoryBot::Factory factory) -> Array[Symbol]
 
   # World sizes are drawn per case, so capacity pressure and an empty
   # waitlist both happen: members 2 to 8, other roots 1 to 3.
-  # : (untyped factory) -> Range[Integer]
-  def self?.root_sizes: (untyped factory) -> Range[Integer]
+  # : (FactoryBot::Factory factory) -> Range[Integer]
+  def self?.root_sizes: (FactoryBot::Factory factory) -> Range[Integer]
 
   # A capacity column (seats, capacity, a limit) drawn 1 to 3 per record.
   # A capacity column some records must leave blank (seats only on a team
   # plan) would make every drafted record invalid, so it is drawn only when
   # the factory's record stays valid with it set.
-  # : (untyped model, untyped factory) -> Array[String]
-  def self?.capacity_args: (untyped model, untyped factory) -> Array[String]
+  # : (model model, FactoryBot::Factory factory) -> Array[String]
+  def self?.capacity_args: (model model, FactoryBot::Factory factory) -> Array[String]
 
   # The columns a unique index holds alone, partial ones included: a
   # partial index still forbids two rows its condition selects, and the
   # factory's defaults usually meet that condition.
-  # : (untyped model) -> Array[String]
-  def self?.conn_unique_columns: (untyped model) -> Array[String]
+  # : (model model) -> Array[String]
+  def self?.conn_unique_columns: (model model) -> Array[String]
 
   # A time column a unique index or an exclusion constraint holds (one start
   # per member) collides when every record takes the factory's one default,
   # and a collision in the world is the setup's, not the app's. Each record
   # gets its own hour instead.
-  # : (untyped model) -> Array[String]
-  def self?.distinct_times: (untyped model) -> Array[String]
+  # : (model model) -> Array[String]
+  def self?.distinct_times: (model model) -> Array[String]
 
   # Tables an action of the area inserts into as its own resource (its name
   # names the table, as loans_create names loans). Those the setup leaves to
@@ -406,8 +439,8 @@ module Propose
   # action (a kiosk return that requests a transfer) is seeded too: that
   # action needs a world of its own first, so without seeding, the actions
   # that draw from the table would never run.
-  # : (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[String]
-  def self?.made_by_own_actions: (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[String]
+  # : (Array[Draft] selected, Hash[Symbol, Sequences::action_stats] stats) -> Array[String]
+  def self?.made_by_own_actions: (Array[Draft] selected, Hash[Symbol, Sequences::action_stats] stats) -> Array[String]
 
   # A table an action draws a record or a value from (`practitioner:
   # :practitioners`, `guest_email_from: :guest_passes`)
@@ -419,13 +452,17 @@ module Propose
   # : (Array[Draft] selected) -> Array[String]
   def self?.pool_tables: (Array[Draft] selected) -> Array[String]
 
+  # The Symbol params of the drafts: the pools, and placeholders such as :text.
+  # : (Array[Draft] selected) -> Array[Symbol]
+  def self?.pools_of: (Array[Draft] selected) -> Array[Symbol]
+
   # What the actions read in the probe (a member's active membership) is
   # made too, or each check-in is refused for a record the area never has.
-  # : (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[String]
-  def self?.setup_tables: (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[String]
+  # : (Array[Draft] selected, Hash[Symbol, Sequences::action_stats] stats) -> Array[String]
+  def self?.setup_tables: (Array[Draft] selected, Hash[Symbol, Sequences::action_stats] stats) -> Array[String]
 
-  # : (Array[Draft] selected) -> Hash[Symbol, Hash[Symbol, untyped]]
-  def self?.probe: (Array[Draft] selected) -> Hash[Symbol, Hash[Symbol, untyped]]
+  # : (Array[Draft] selected) -> Hash[Symbol, Sequences::action_stats]
+  def self?.probe: (Array[Draft] selected) -> Hash[Symbol, Sequences::action_stats]
 
   # The table a resource is about: `room_bookings` -> room_bookings,
   # `api_staff_closures` -> closures; nil for `api_kiosk` or a webhook.
@@ -442,8 +479,8 @@ module Propose
   # : (String? file) -> Hash[String, Integer]
   def self?.static_tables: (String? file) -> Hash[String, Integer]
 
-  # : (untyped node, Array[String] acc) -> void
-  def self?.walk_constants: (untyped node, Array[String] acc) -> void
+  # : (Prism::Node node, Array[String] acc) -> void
+  def self?.walk_constants: (Prism::Node node, Array[String] acc) -> void
 
   # Areas: resources about the same table form one area (`holds` and
   # `api_holds`). A resource about no table joins the area whose table it
@@ -451,8 +488,8 @@ module Propose
   # area then gets the actions that make the records its pools take, and is
   # filled, jobs first, with the actions that write its table, up to
   # MAX_ACTIONS.
-  # : (Hash[Symbol, untyped] stats) -> Array[[String, Array[Draft], Array[String]]]
-  def self?.areas: (Hash[Symbol, untyped] stats) -> Array[[ String, Array[Draft], Array[String] ]]
+  # : (Hash[Symbol, Sequences::action_stats] stats) -> Array[[String, Array[Draft], Array[String]]]
+  def self?.areas: (Hash[Symbol, Sequences::action_stats] stats) -> Array[[ String, Array[Draft], Array[String] ]]
 
   # A desk route and an API endpoint that make or change the same record:
   # `holds_create` and POST /api/v1/holds, `fines_pay` and POST
@@ -461,20 +498,20 @@ module Propose
   # : (Draft d) -> Symbol?
   def self?.door_key: (Draft d) -> Symbol?
 
-  # : (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[[Symbol, Symbol, String]]
-  def self?.twins: (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[[ Symbol, Symbol, String ]]
+  # : (Array[Draft] selected, Hash[Symbol, Sequences::action_stats] stats) -> Array[[Symbol, Symbol, String]]
+  def self?.twins: (Array[Draft] selected, Hash[Symbol, Sequences::action_stats] stats) -> Array[[ Symbol, Symbol, String ]]
 
-  # : (String name, Array[Draft] selected, Hash[Symbol, untyped] stats, refusals: Array[String], failures: Array[Failure], ?setup: Array[String], ?note: String?) -> String
-  def self?.definition_source: (String name, Array[Draft] selected, Hash[Symbol, untyped] stats, refusals: Array[String], failures: Array[Failure], ?setup: Array[String], ?note: String?) -> String
+  # : (String name, Array[Draft] selected, Hash[Symbol, Sequences::action_stats] stats, refusals: Array[String], failures: Array[Failure], ?setup: Array[String], ?note: String?) -> String
+  def self?.definition_source: (String name, Array[Draft] selected, Hash[Symbol, Sequences::action_stats] stats, refusals: Array[String], failures: Array[Failure], ?setup: Array[String], ?note: String?) -> String
 
-  # : (Hash[Symbol, untyped] stats, Array[Draft] selected) -> Array[String]
-  def self?.app_refusals: (Hash[Symbol, untyped] stats, Array[Draft] selected) -> Array[String]
+  # : (Hash[Symbol, Sequences::action_stats] stats, Array[Draft] selected) -> Array[String]
+  def self?.app_refusals: (Hash[Symbol, Sequences::action_stats] stats, Array[Draft] selected) -> Array[String]
 
   # : (String name, String source) -> String
   def self?.spec_file: (String name, String source) -> String
 
-  # : (untyped model) -> Array[String]
-  def self?.statuses: (untyped model) -> Array[String]
+  # : (model model) -> Array[String]
+  def self?.statuses: (model model) -> Array[String]
 
   SETTLED: Regexp
 
@@ -493,16 +530,16 @@ module Propose
   # payment for it break the money rule before any action runs. After the
   # payments are made, each record with a captured one is marked settled at
   # the amount captured, so the hunt starts from a world the rule allows.
-  # : (String child_var, untyped child_model, Array[String] made_vars) -> Array[String]
-  def self?.settle_lines: (String child_var, untyped child_model, Array[String] made_vars) -> Array[String]
+  # : (String child_var, model child_model, Array[String] made_vars) -> Array[String]
+  def self?.settle_lines: (String child_var, model child_model, Array[String] made_vars) -> Array[String]
 
   KIND_COLUMN: Regexp
 
   # "" when the payments have one kind; ", kind: record.kind" when both
   # sides name the kind; ", kind: \"deposit\"" when the amount column names
   # one (deposit_cents); nil when nothing says which payments count.
-  # : (untyped model, String amount, untyped child) -> String?
-  def self?.kind_filter: (untyped model, String amount, untyped child) -> String?
+  # : (model model, String amount, model child) -> String?
+  def self?.kind_filter: (model model, String amount, model child) -> String?
 
   # Order kept: a waiting status (waitlisted, queued, pending) that some code
   # reads in timestamp order. Rows alike in all but when they entered it must
@@ -531,11 +568,11 @@ module Propose
 
   # An invariants.rb that exists keeps the agent's rules; a drafted rule it
   # does not name yet goes in before its last `end`.
-  # : (untyped path) -> Array[String]
-  def self?.add_drafted: (untyped path) -> Array[String]
+  # : (Pathname path) -> Array[String]
+  def self?.add_drafted: (Pathname path) -> Array[String]
 
-  # : (String name, Array[Draft] selected, Hash[Symbol, untyped] stats, Array[String] own) -> String
-  def self?.summarize: (String name, Array[Draft] selected, Hash[Symbol, untyped] stats, Array[String] own) -> String
+  # : (String name, Array[Draft] selected, Hash[Symbol, Sequences::action_stats] stats, Array[String] own) -> String
+  def self?.summarize: (String name, Array[Draft] selected, Hash[Symbol, Sequences::action_stats] stats, Array[String] own) -> String
 
   # : (Array[String] argv) -> void
   def self?.main: (Array[String] argv) -> void

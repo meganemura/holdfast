@@ -1,8 +1,9 @@
 # The parts of Rails, RSpec, Minitest, FactoryBot, Grape and Rack that the
 # files under lib/holdfast/runtime/ and lib/holdfast/sequences/ reach. Those
 # files run inside an app's test process, where the app's own versions of
-# these gems are loaded; holdfast depends on none of them, so each call is
-# untyped here and only the names are declared.
+# these gems are loaded; holdfast depends on none of them. A call is typed
+# here by what those gems return where holdfast reads the value (a model's
+# columns, a factory's name), and left untyped where the app decides it.
 
 module ActiveSupport
   module Testing
@@ -156,21 +157,19 @@ module FactoryBot
   def self.factories: () -> untyped
   def self.rewind_sequences: () -> untyped
   def self.create: (*untyped, **untyped) -> untyped
-  def self.build: (*untyped, **untyped) -> untyped
+  def self.build: (*untyped) -> ActiveRecord::Base
   def self.attributes_for: (*untyped, **untyped) -> untyped
   module Syntax
     module Methods
     end
   end
-  module Declaration
-    class Association
-      def name: () -> Symbol
+  class Declaration
+    def name: () -> Symbol
+    class Association < Declaration
     end
-    class Dynamic
-      def name: () -> Symbol
+    class Dynamic < Declaration
     end
-    class Implicit
-      def name: () -> Symbol
+    class Implicit < Declaration
     end
   end
 end
@@ -204,5 +203,90 @@ module ActiveRecord
     def except: (*Symbol) -> Relation
     def where: (*untyped, **untyped) -> Relation
     def exists?: () -> bool
+  end
+end
+
+# What drafting reads of a model, a factory and a controller, typed by what
+# Rails and FactoryBot return, so a mistake in propose.rb shows in Steep.
+module ActiveModel
+  class Name
+    def singular: () -> String
+    def plural: () -> String
+    def human: (*untyped) -> String
+  end
+  class Validator
+    def options: () -> Hash[Symbol, untyped]
+  end
+  class Errors
+    def []: (Symbol) -> Array[String]
+  end
+end
+
+module ActiveRecord
+  module ConnectionAdapters
+    class Column
+      def name: () -> String
+      def type: () -> Symbol?
+      def null: () -> bool
+    end
+  end
+  module Reflection
+    class AssociationReflection
+      def name: () -> Symbol
+      def foreign_key: () -> (String | Symbol)
+      def klass: () -> singleton(ActiveRecord::Base)
+      def polymorphic?: () -> bool
+      def macro: () -> Symbol
+      def options: () -> Hash[Symbol, untyped]
+      def through_reflection?: () -> bool
+      def scope: () -> Proc?
+    end
+  end
+  class Base
+    def self.model_name: () -> ActiveModel::Name
+    def self.columns: () -> Array[ConnectionAdapters::Column]
+    def self.columns_hash: () -> Hash[String, ConnectionAdapters::Column]
+    def self.reflect_on_all_associations: (?Symbol macro) -> Array[Reflection::AssociationReflection]
+    def self.reflect_on_association: (Symbol | String) -> Reflection::AssociationReflection?
+    def self.validators_on: (*Symbol) -> Array[ActiveModel::Validator]
+    def self.table_exists?: () -> bool
+    def self.where: (*untyped, **untyped) -> Relation
+    def valid?: () -> bool
+    def errors: () -> ActiveModel::Errors
+    def []=: (untyped, untyped) -> untyped
+  end
+  class Relation
+    def to_sql: () -> String
+  end
+end
+
+module ActiveSupport
+  module Callbacks
+    class Callback
+      def kind: () -> Symbol
+      def filter: () -> untyped
+    end
+  end
+end
+
+module ActionController
+  class Metal
+    def self._process_action_callbacks: () -> Array[ActiveSupport::Callbacks::Callback]
+  end
+end
+
+module FactoryBot
+  class Factory
+    def name: () -> Symbol
+    def build_class: () -> singleton(ActiveRecord::Base)
+    def definition: () -> Definition
+    def defined_traits: () -> Array[Trait]
+  end
+  class Definition
+    def declarations: () -> Enumerable[Declaration]
+    def defined_traits: () -> Array[Trait]
+  end
+  class Trait
+    def name: () -> String
   end
 end
