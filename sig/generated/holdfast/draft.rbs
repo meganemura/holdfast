@@ -1,0 +1,155 @@
+# Generated from lib/holdfast/draft.rb with RBS::Inline
+
+module Holdfast
+  # A first inputs file for one method, drafted from what the code says: the
+  # method's parameters (a record by a factory of its name, a date by its
+  # default), the conditions it branches on, and the literals and constants
+  # those conditions compare with. A date argument is drawn around each date
+  # column of a record argument that the method reads, because "before the
+  # due date" and "after it" are where date code differs.
+  #
+  # A draft with no placeholder left is complete: the run pins it at once,
+  # marked as drafted, and the agent accepts it by copying it to evidence.
+  # A draft with a placeholder is only written, and the row names it.
+  class Draft
+    OFFSETS: Array[Integer]
+
+    ANCHOR: String
+
+    COMPARE: Array[Symbol]
+
+    # The reads of a parameter the method never reads.
+    NO_READS: Array[[ String, Array[Integer] ]]
+
+    # The bounds of a read no comparison sets against a literal.
+    NO_BOUNDS: Array[Integer]
+
+    # The arguments of a call that has none.
+    NO_NODES: Array[Prism::node]
+
+    # A draft with no path is one holdfast could not write at all.
+    class Result < Data
+      attr_reader path(): String?
+
+      attr_reader data(): json?
+
+      attr_reader holes(): Array[String]
+
+      attr_reader basis(): Array[String]
+
+      def self.new: (String? path, json? data, Array[String] holes, Array[String] basis) -> instance
+                  | (path: String?, data: json?, holes: Array[String], basis: Array[String]) -> instance
+
+      def self.members: () -> [ :path, :data, :holes, :basis ]
+
+      def members: () -> [ :path, :data, :holes, :basis ]
+    end
+
+    class Result
+      # : () -> bool
+      def complete?: () -> bool
+    end
+
+    @files: Hash[String, String]
+
+    @factories: Array[String]
+
+    @constants: Hash[String, Integer]
+
+    @anchored: [ String, String ]?
+
+    @target: Target
+
+    @rev: String
+
+    @change: Change
+
+    # : (String root, String target) -> String
+    def self.path: (String root, String target) -> String
+
+    # : (Change change, String rev, Target target) -> Result
+    def self.for: (Change change, String rev, Target target) -> Result
+
+    # : (Change change, String rev, Target target) -> void
+    def initialize: (Change change, String rev, Target target) -> void
+
+    # : () -> Result
+    def result: () -> Result
+
+    # : (Result) -> void
+    def write: (Result) -> void
+
+    private
+
+    # The changed value a caller reads through a scope (Hold.open reads
+    # OPEN_STATUSES as `status`): one record of the scope's model, linked to
+    # each record argument it belongs to, with that column drawn over every
+    # value either side's list holds, one value neither holds, and no record
+    # at all. A method that tests the constant on an argument's attribute
+    # (`OPEN_STATUSES.include?(hold.status)`) gets that attribute drawn.
+    # : (Prism::Node node, Hash[String, String] records, Hash[String, json] draws, Hash[String, Hash[String, String]] overrides, Array[String] basis) -> String?
+    def world_for: (Prism::Node node, Hash[String, String] records, Hash[String, json] draws, Hash[String, Hash[String, String]] overrides, Array[String] basis) -> String?
+
+    # : (Prism::Node?) -> String?
+    def const_name: (Prism::Node?) -> String?
+
+    # : (String) -> String
+    def model_file: (String) -> String
+
+    # A scope given as a block argument (`scope :open, &OPEN`) has no body
+    # here to draft from.
+    # : (String?) -> (Prism::LambdaNode | Prism::BlockNode | nil)
+    def scope_node: (String?) -> (Prism::LambdaNode | Prism::BlockNode | nil)
+
+    # : (String? source, String name) -> Prism::DefNode?
+    def method_node: (String? source, String name) -> Prism::DefNode?
+
+    # : (Prism::Node? node) { (Prism::Node) -> void } -> void
+    def walk: (Prism::Node? node) { (Prism::Node) -> void } -> void
+
+    # : (String?) -> bool
+    def date_default?: (String?) -> bool
+
+    # : (String) -> bool
+    def date_name?: (String) -> bool
+
+    # : (String name, nil _default, Hash[String, String] records, Array[String] holes) -> Hash[String, String]
+    def param_value: (String name, nil _default, Hash[String, String] records, Array[String] holes) -> Hash[String, String]
+
+    # : (String const_name, String kind, Array[String] holes) -> Hash[String, String]?
+    def receiver_for: (String const_name, String kind, Array[String] holes) -> Hash[String, String]?
+
+    # : (String) -> bool
+    def model_class?: (String) -> bool
+
+    # param => [[attr, [bounds]]] for each `param.attr` the method calls,
+    # with the integer literals and constants a comparison sets it against.
+    # : (Prism::Node node, Array[String] params) -> Hash[String, Array[[String, Array[Integer]]]]
+    def attribute_reads: (Prism::Node node, Array[String] params) -> Hash[String, Array[[ String, Array[Integer] ]]]
+
+    # : (Prism::Node? n, Array[String] params) -> [String, String]?
+    def param_attr: (Prism::Node? n, Array[String] params) -> [ String, String ]?
+
+    # : (Prism::Node?) -> Integer?
+    def integer_of: (Prism::Node?) -> Integer?
+
+    # : (Prism::Node) -> Array[Integer]
+    def literals: (Prism::Node) -> Array[Integer]
+
+    # : () -> Hash[String, Integer]
+    def constants: () -> Hash[String, Integer]
+
+    # : () -> Array[String]
+    def factories: () -> Array[String]
+
+    # Column name => column type, from the factory's table in db/schema.rb.
+    # : (String) -> Hash[String, String]
+    def columns_of: (String) -> Hash[String, String]
+
+    # : (Regexp) -> Array[String]
+    def git_files: (Regexp) -> Array[String]
+
+    # : (String?) -> String
+    def file_text: (String?) -> String
+  end
+end

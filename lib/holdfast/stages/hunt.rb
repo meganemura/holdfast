@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 module Holdfast
   module Stages
     # The hunt stage: the sequences library drafts one definition per write
@@ -14,6 +16,7 @@ module Holdfast
     module Hunt
       DEFAULT_BUDGET = 600
 
+      #: (Change change, Record record, budget: Integer?, ?files: Array[String]?) -> Array[Verdict]
       def self.run(change, record, budget:, files: nil)
         budget ||= DEFAULT_BUDGET
         dir = File.join(Holdfast.dir(change.root), "sequences")
@@ -21,7 +24,8 @@ module Holdfast
         FileUtils.mkdir_p([dir, work])
         env = { "RAILS_ENV" => "test", "SEQUENCES_OUT" => dir, "SEQUENCES_WORK" => work,
                 "SEQUENCES_LIB" => File.join(SEQUENCES, "sequences.rb") }
-        env["SEQUENCES_DATABASE_URL"] = record.database_url if record.database_url
+        url = record.database_url
+        env["SEQUENCES_DATABASE_URL"] = url if url
         bundle = overlay(change, env)
         return [bundle] if bundle.is_a?(Verdict)
 
@@ -56,6 +60,7 @@ module Holdfast
       # refused every time, or never drawn, checked nothing, and an area that
       # reached under half its actions is not listed as clean. An area that
       # failed stopped at its failure, so its reach says nothing about setup.
+      #: (Change change, Array[json] table) -> Verdict?
       def self.reach_row(change, table)
         counts = table.filter_map { |r| r["verdict"] != "FAILURE" && r["reached"].to_s[%r{(\d+)/(\d+)}] && [r, $1.to_i, $2.to_i] }
         total = counts.sum { _1[2] }
@@ -80,6 +85,8 @@ module Holdfast
       # not list. A Gemfile of holdfast's own evaluates the app's and adds
       # it, locked from the gems already installed, so the app's Gemfile and
       # lock stay untouched.
+      # Sets BUNDLE_GEMFILE in +env+; a row only when it could not.
+      #: (Change change, Hash[String, String] env) -> Verdict?
       def self.overlay(change, env)
         dir = File.join(Holdfast.dir(change.root), "bundle")
         FileUtils.mkdir_p(dir)
@@ -98,10 +105,12 @@ module Holdfast
         nil
       end
 
+      # Drafts the areas into +dir+; a row only when drafting failed.
+      #: (Change change, Record record, String dir, Hash[String, String] env) -> Verdict?
       def self.draft(change, record, dir, env)
         probe_env = env.merge(record.database_url ? { "DATABASE_URL" => "#{record.database_url}_seq0" } : {})
-        if record.side_setup
-          _, status = Open3.capture2e(probe_env, "/bin/sh", "-c", record.side_setup, chdir: change.root)
+        if (setup = record.side_setup)
+          _, status = Open3.capture2e(probe_env, "/bin/sh", "-c", setup, chdir: change.root)
           return row("(sequences)", "unchecked", "the probe database did not set up", [], "holdfast run --learn") unless status.success?
         end
         # An area a person kept, merged or wrote is never drafted over.
@@ -124,6 +133,7 @@ module Holdfast
 
       # An area runs for a change when its definition names a changed file's
       # table, constant or route resource.
+      #: (Array[String] areas, Array[String] files) -> Array[String]
       def self.touching(areas, files)
         words = files.flat_map do |f|
           base = File.basename(f, ".rb").delete_suffix("_controller").delete_suffix("_api")
@@ -132,6 +142,7 @@ module Holdfast
         areas.select { |a| text = File.read(a); words.any? { text.include?(_1) } }
       end
 
+      #: (Change change, json r) -> Verdict
       def self.area_row(change, r)
         text = r["text"].to_s
         lines = text.lines.map(&:strip)
@@ -144,7 +155,7 @@ module Holdfast
         when "FAILURE"
           # The failure text is the first line under "Sequences::Failure:" in
           # RSpec's report, kept whole: a cut message hid which row broke.
-          logged = File.file?(r["log"].to_s) ? File.readlines(r["log"], encoding: "UTF-8").map { _1.scrub.strip } : []
+          logged = File.file?(r["log"].to_s) ? File.readlines(r["log"], encoding: "UTF-8").map { _1.scrub.strip } : [] #: Array[String]
           at = logged.index { _1.end_with?("Sequences::Failure:") }
           found = at ? logged[at + 1] : logged.find { _1.match?(/ raised |invariant \w+ broken|differ|disagree/) && !_1.start_with?("#", "1)") }
           reason = found ? found.sub(/\A.*?in '[^']+': /, "").sub(/ \(Sequences::Failure\)\z/, "") : lines.first.delete_prefix("FAILURE: ")
@@ -152,7 +163,7 @@ module Holdfast
           # An error raised in holdfast's own code, not the app's, says nothing
           # about the app: report it as holdfast's, with where it was raised.
           frame = logged.find { _1.start_with?("# /") }
-          if at.nil? && frame&.include?(File.expand_path("..", __dir__))
+          if at.nil? && frame&.include?(File.dirname(RUNTIME))
             return row(area, "unchecked", "holdfast failed while hunting here: #{short}", ["at: #{frame.delete_prefix("# ")}", "log: #{log}"],
                        "report it to holdfast with the log; the hunt checked nothing in this area", scope:)
           end
@@ -184,6 +195,7 @@ module Holdfast
         end
       end
 
+      #: (String target, String kind, String reason, Array[String] evidence, String next_step, ?scope: String?) -> Verdict
       def self.row(target, kind, reason, evidence, next_step, scope: nil)
         Verdict.of(target:, stage: "sequences", kind:, reason:, evidence:, next_step:, scope:)
       end

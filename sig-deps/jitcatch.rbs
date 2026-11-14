@@ -1,0 +1,29 @@
+# jitcatch ships no signatures. These are the parts of it that holdfast
+# calls, as jitcatch 0.1 defines them; the documents it returns are JSON.
+module JitCatch
+  class Error < StandardError
+  end
+
+  class EnvironmentError < Error
+    attr_reader doc: Hash[String, untyped]
+  end
+
+  class GitRepo
+    def initialize: (String path) -> void
+  end
+
+  class Changes
+    def initialize: (GitRepo repo, String base_ref, String head_ref, ?coverage: String?, ?setup: String?, ?databases: Array[String], ?readers: bool) -> void
+    def build: () -> Hash[String, untyped]
+  end
+
+  class Runner
+    FILE_CAP: Integer
+
+    def self.run: (String repo, String base_ref, String head_ref, String tests_dir, ?reruns: Integer, ?timeout: Integer?, ?env: Array[String], ?workers: Integer, ?serial: bool, ?number_database_url: bool, ?setup: String?, ?finished_in_time: untyped) -> Hash[String, untyped]
+  end
+
+  class Assessor
+    def self.apply: (Hash[String, untyped] doc) -> Hash[String, untyped]
+  end
+end

@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 module Holdfast
   VERSION = "0.2.0"
   # The hegeltest the gem depends on, and the one the hunt adds to an app bundle that lacks it.

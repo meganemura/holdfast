@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 module Holdfast
   module Stages
     # Runs every test that speaks for a target on base and on head (jitcatch's
@@ -11,11 +13,34 @@ module Holdfast
     #   pin       the pin tests Fill wrote (inputs or drafted)
     # A path segment named `change` marks a test whose difference is intended.
     module Diff
-      Source = Data.define(:path, :targets, :origin, :edited)
-      Outcome = Data.define(:source, :test, :kind, :reason, :evidence, :repro, :next_step) do
+      # +edited+ is the head lines the change edited in an authored test.
+      Source = Data.define(
+        :path, #: String
+        :targets, #: Array[String]
+        :origin, #: String
+        :edited #: Array[Integer]?
+      )
+      # +test+ is jitcatch's result for one example on both sides.
+      Outcome = Data.define(
+        :source, #: Source
+        :test, #: json
+        :kind, #: String
+        :reason, #: String
+        :evidence, #: String
+        :repro, #: String
+        :next_step #: String
+      )
+
+      class Outcome
+        #: () -> String
         def place = "#{Diff.shown_path(source)}#{":#{test["line"]}" if test["line"]}"
       end
-      Result = Data.define(:outcomes, :reach, :failure)
+
+      Result = Data.define(
+        :outcomes, #: Array[Outcome]
+        :reach, #: reach
+        :failure #: String?
+      )
       # Where read_reach keeps the values a test file's inputs wrote.
       DREW = "(drew)"
       # Prefix of the key that holds the branch arms a test took in one file,
@@ -27,16 +52,25 @@ module Holdfast
         "no_table" => "a table the test needs is missing on one side",
         "no_database" => "the test database was not reachable on one side",
         "timeout" => "the test timed out on one side"
-      }.freeze
+      }.freeze #: Hash[String, String]
+      # What a test that left no reach file ran: nothing, on either side.
+      NO_SIDES = Hash.new.freeze #: Hash[String, Hash[String, Array[untyped]]]
+      NO_FILES = Hash.new.freeze #: Hash[String, Array[untyped]]
 
+      # @rbs change: Change
+      # @rbs record: Record
+      # @rbs targets: Array[Target]
+      # @rbs pins: Array[Fill::Pins]
+      # @rbs values: Array[String]
+      # @rbs return: Result
       def self.run(change, record, targets, pins, values: [])
         work = File.join(Holdfast.dir(change.root), "runs", "diff")
         FileUtils.rm_rf(work) if work.end_with?("/.holdfast/runs/diff")
         reach_dir = File.join(work, "reach")
         FileUtils.mkdir_p(reach_dir)
         sources = gather(change, record, targets, pins, work)
-        outcomes = []
-        failure = nil
+        outcomes = [] #: Array[Outcome]
+        failure = nil #: String?
         sources.each_slice(JitCatch::Runner::FILE_CAP).with_index do |chunk, i|
           dir = File.join(work, "run#{i}")
           chunk.each { |s| FileUtils.mkdir_p(File.dirname(File.join(dir, s.path))) && FileUtils.cp(File.join(work, "all", s.path), File.join(dir, s.path)) }
@@ -51,13 +85,15 @@ module Holdfast
       # tell the examples of a file apart.
       # What one outcome ran on one side ("1" base, "2" head): its own
       # example's lines when they were kept, else its whole file's.
+      #: (reach reach, Outcome outcome, String side) -> Hash[String, Array[untyped]]
       def self.ran(reach, outcome, side)
         own = "#{outcome.source.path}:#{outcome.test["line"]}"
-        (reach.key?(own) && reach[own].key?(side) ? reach[own] : reach.fetch(outcome.source.path, {})).fetch(side, {})
+        (reach.key?(own) && reach[own].key?(side) ? reach[own] : reach.fetch(outcome.source.path, NO_SIDES)).fetch(side, NO_FILES)
       end
 
+      #: (String) -> reach
       def self.read_reach(dir)
-        reach = Hash.new { |h, k| h[k] = Hash.new { |h2, k2| h2[k2] = Hash.new { |h3, k3| h3[k3] = [] } } }
+        reach = Hash.new { |h, k| h[k] = Hash.new { |h2, k2| h2[k2] = Hash.new { |h3, k3| h3[k3] = [] } } } #: reach
         Dir.glob(File.join(dir, "reach-*.json")).each do |file|
           row = JSON.parse(File.read(file))
           row["hits"].each { |path, lines| reach[row["test"]][row["side"]][path] |= lines }
@@ -72,13 +108,14 @@ module Holdfast
         reach
       end
 
+      #: (Change change, Record record, Array[Target] targets, Array[Fill::Pins] pins, String work) -> Array[Source]
       def self.gather(change, record, targets, pins, work)
         all = File.join(work, "all")
         edited = Change.git(change.root, "diff", "--name-only", "--diff-filter=AM", change.base, change.head, "--", "spec", "test")
                        .lines.map(&:strip).select { _1.end_with?(record.test_suffix) }
-        by_test = Hash.new { |h, k| h[k] = [] }
+        by_test = Hash.new { |h, k| h[k] = [] } #: Hash[String, Array[String]]
         targets.each { |t| t.tests.select { _1.end_with?(record.test_suffix) }.each { by_test[_1] << t.name } }
-        sources = []
+        sources = [] #: Array[Source]
         (by_test.keys - edited).each do |file|
           text = show(change, change.base, file) or next
           sources << write(all, "kept/#{file}", text, by_test[file], "kept")
@@ -100,11 +137,13 @@ module Holdfast
         sources
       end
 
+      #: (Change change, String rev, String file) -> String?
       def self.show(change, rev, file)
         out, status = Open3.capture2("git", "show", "#{rev}:#{file}", chdir: change.root)
         status.success? ? out : nil
       end
 
+      #: (String all, String path, String? text, Array[String] targets, String origin, ?Array[Integer]? edited) -> Source
       def self.write(all, path, text, targets, origin, edited = nil)
         FileUtils.mkdir_p(File.dirname(File.join(all, path)))
         File.write(File.join(all, path), text)
@@ -112,11 +151,15 @@ module Holdfast
       end
 
       # Head line numbers the change added or rewrote in one test file.
+      #: (Change change, String file) -> Array[Integer]
       def self.edited_lines(change, file)
         diff = Change.git(change.root, "diff", "--unified=0", change.base, change.head, "--", file)
-        diff.scan(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/).flat_map { |start, count| (start.to_i...(start.to_i + (count || 1).to_i)).to_a }
+        hunks = diff.scan(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/) #: Array[[String, String?]]
+        hunks.flat_map { |start, count| (start.to_i...(start.to_i + (count || 1).to_i)).to_a }
       end
 
+      # The outcomes of one chunk of tests, or none and why the setup failed.
+      #: (Change change, Record record, Array[Source] chunk, String dir, String reach_dir, ?Array[String] values) -> [Array[Outcome], String?]
       def self.compare(change, record, chunk, dir, reach_dir, values = [])
         env_names = record.env_names + %w[RUBYOPT HOLDFAST_REACH_DIR HOLDFAST_VALUES] + (record.database_url ? ["DATABASE_URL"] : [])
         saved = ENV.to_h.slice("RUBYOPT", "HOLDFAST_REACH_DIR", "DATABASE_URL", "HOLDFAST_VALUES")
@@ -138,14 +181,17 @@ module Holdfast
           Outcome.new(source:, test:, kind:, reason:, evidence: evidence(test), next_step: next_step || MARK.fetch(source.origin.split.first, MARK["evidence"]),
                       repro: "#{record.bundle}rspec #{File.join(dir, test["file"]).delete_prefix("#{change.root}/")}#{":#{test["line"]}" if test["line"]}")
         end
-        [outcomes, nil]
+        ran = [outcomes, nil] #: [Array[Outcome], String?]
+        ran
       rescue JitCatch::EnvironmentError => e
-        [[], "setup failed on #{e.doc["setup_failed"].map { "#{_1["side"]}: #{Array(_1["stderr"]).last}" }.join("; ")}"]
+        failed = [[], "setup failed on #{e.doc["setup_failed"].map { "#{_1["side"]}: #{Array(_1["stderr"]).last}" }.join("; ")}"] #: [Array[Outcome], String?]
+        failed
       ensure
         %w[RUBYOPT HOLDFAST_REACH_DIR DATABASE_URL HOLDFAST_VALUES].each { ENV.delete(_1) }
         ENV.update(saved)
       end
 
+      #: (Source) -> String
       def self.shown_path(source)
         case source.origin
         when "kept" then source.path.delete_prefix("kept/")
@@ -160,8 +206,9 @@ module Holdfast
         "drafted" => "fix the code; if the intent covers it, copy the draft to evidence/ and mark the input \"change\": true or add a change_when",
         "inputs" => "fix the code; if the intent covers it, mark the input \"change\": true or cover it with change_when",
         "evidence" => "fix the code; if the intent covers it, move the test under change/"
-      }.freeze
+      }.freeze #: Hash[String, String]
 
+      #: (json test, Array[Integer] starts, Array[Integer] edited) -> bool
       def self.example_edited?(test, starts, edited)
         return edited.any? unless test["line"]
 
@@ -169,6 +216,8 @@ module Holdfast
         edited.any? { (test["line"]...stop).cover?(_1) }
       end
 
+      # Its kind, its reason and, when the origin's mark does not say it, its next step.
+      #: (json test, bool meant) -> [String, String, String?]
       def self.classify(test, meant)
         head_passes = %w[pass skip].include?(test.dig("head", "status"))
         case [test["classification"], test["disposition"]]
@@ -200,10 +249,13 @@ module Holdfast
 
       NO_BASE = /uninitialized constant|undefined (method|local variable)|unknown attribute|has no attribute|UndefinedColumn|unknown keyword|No route matches/
 
+      #: (json) -> bool
       def self.no_base?(test) = test.dig("base", "message").to_s.match?(NO_BASE)
 
+      #: (json) -> String
       def self.evidence(test)
-        base, head = test["base"] || {}, test["head"] || {}
+        base = test["base"] || {} #: json
+        head = test["head"] || {} #: json
         failed = [head, base].find { !_1["message"].to_s.strip.empty? }
         detail = failed ? " (#{failed["message"].to_s.lines.first(3).map(&:strip).join(" ")[0, 220]})" : ""
         "#{test["name"]}: base #{base["status"]}, head #{head["status"]}#{detail}"

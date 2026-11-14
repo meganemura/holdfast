@@ -1,0 +1,361 @@
+# Generated from lib/holdfast/runtime/check_support.rb with RBS::Inline
+
+module HoldfastCheck
+  private def response: () -> untyped
+
+  private def request: () -> untyped
+
+  self.@method_gates: Hash[String, bool]
+
+  self.@routes: Array[[ String, String ]]
+
+  type given_block = ^() [self: World] -> untyped
+
+  type scope_block = ^() [self: Scope] -> untyped
+
+  # The world or the action could not be run; nothing was checked. +absent+
+  # names the method, constant, attribute or route that does not exist, so a
+  # base that predates a feature reads as that, not as a failure.
+  class CouldNotRun < StandardError
+    attr_reader phase: String
+
+    attr_reader absent: String?
+
+    # : (String phase, String message, ?absent: String?) -> void
+    def initialize: (String phase, String message, ?absent: String?) -> void
+  end
+
+  # The points a race can hold its first action at. A named point holds the
+  # first time the held action passes it; `Class#method` is the fifth kind.
+  POINTS: Hash[String, String]
+
+  # With no pause named, or batch_load named and never reached, these are
+  # tried in turn until one breaks `expect` in a way no serial order does.
+  FALLBACKS: Array[String]
+
+  # : (Hash[Symbol, untyped]? gate, String point, String at) -> untyped
+  def self.hold: (Hash[Symbol, untyped]? gate, String point, String at) -> untyped
+
+  # : () -> Hash[Symbol, untyped]?
+  def self.gate: () -> Hash[Symbol, untyped]?
+
+  # @rbs module-self ActiveRecord::Relation
+  module BatchGate : ActiveRecord::Relation
+    # : () -> Array[untyped]
+    def records: () -> Array[untyped]
+  end
+
+  # @rbs module-self ActiveRecord::Base
+  module LockGate : ActiveRecord::Base
+    # : (*untyped) ?{ (*untyped) -> untyped } -> untyped
+    def with_lock: (*untyped) ?{ (*untyped) -> untyped } -> untyped
+
+    # : (*untyped) -> untyped
+    def lock!: (*untyped) -> untyped
+  end
+
+  module WriteGate
+  end
+
+  # : () -> untyped
+  def self.watch_writes: () -> untyped
+
+  # The outside-service fakes: a module that holds a client
+  # (`PaymentGateway.client = FakePaymentGateway.new`).
+  # : () -> Array[Module]
+  def self.client_holders: () -> Array[Module]
+
+  # Each order of a race starts from the same outside fakes: each client
+  # gets its instance variables back as they were before the first.
+  # : () -> Array[[untyped, Hash[Symbol, String]]]
+  def self.clients: () -> Array[[ untyped, Hash[Symbol, String] ]]
+
+  # : (Array[[untyped, Hash[Symbol, String]]] saved) -> Array[[untyped, Hash[Symbol, String]]]
+  def self.restore: (Array[[ untyped, Hash[Symbol, String] ]] saved) -> Array[[ untyped, Hash[Symbol, String] ]]
+
+  # : () -> Array[Module]
+  def self.watch_outside_calls: () -> Array[Module]
+
+  OutsideGate: Module
+
+  # A service the suspicion stubs on a module (`allow(LockerApi).to
+  # receive(:register)`) is an outside call too, and `pause:
+  # LockerApi.register` names it. RSpec's stub sits in front of any hook
+  # prepended to the module, so the hold is on the stub's own invocation.
+  # @rbs module-self RSpec::Mocks::MessageExpectation
+  module StubGate : RSpec::Mocks::MessageExpectation
+    private
+
+    # : (*untyped args) ?{ (*untyped) -> untyped } -> untyped
+    def invoke_incrementing_actual_calls_by: (*untyped args) ?{ (*untyped) -> untyped } -> untyped
+  end
+
+  # rspec-mocks loads when the first example runs, after this file.
+  # : () -> untyped
+  def self.watch_stubs: () -> untyped
+
+  # : (String point) -> bool?
+  def self.method_gate: (String point) -> bool?
+
+  # A NameError for a missing constant or method on a real object, an
+  # unknown attribute or column, or a route that does not exist: what a tree
+  # shows when it predates the feature the suspicion is about. A method
+  # called on nil is a bug, not an absence. The attribute errors come first:
+  # both are NoMethodErrors with no name and no receiver.
+  # : (Exception error) -> String?
+  def self.absent: (Exception error) -> String?
+
+  NO_RECEIVER: Object
+
+  # update_columns writes past the attribute methods, so its error names the
+  # column but not the record; the class is kept on the error for `absent`.
+  # @rbs module-self ActiveRecord::Base
+  module ColumnOwner : ActiveRecord::Base
+    # : (*untyped) -> untyped
+    def update_columns: (*untyped) -> untyped
+  end
+
+  # One record per factory call. A record made earlier fills a belongs_to
+  # the attributes leave out, so `member` then `loan` is that member's loan.
+  # Inside `given`, an earlier record is read by its name. A given written
+  # as Ruby may return any value; only records are read again.
+  class World
+    @example: untyped
+
+    attr_reader records: Hash[Symbol, untyped]
+
+    # : (untyped example) -> void
+    def initialize: (untyped example) -> void
+
+    # : (Symbol name, ?factory: Symbol, ?traits: Array[Symbol], **untyped attrs) -> untyped
+    def make: (Symbol name, ?factory: Symbol, ?traits: Array[Symbol], **untyped attrs) -> untyped
+
+    # A given written as Ruby: the block returns the record (or any value).
+    # : (Symbol name, String text) { () [self: World] -> untyped } -> untyped
+    def build: (Symbol name, String text) { () [self: World] -> untyped } -> untyped
+
+    # The records made so far, newest first, then what each belongs to, so a
+    # hold made after a copy gets that copy's book.
+    # : () -> Array[untyped]
+    def linkable: () -> Array[untyped]
+
+    # : () -> Hash[Symbol, untyped]
+    def fresh: () -> Hash[Symbol, untyped]
+
+    # : (untyped value) -> untyped
+    def reload: (untyped value) -> untyped
+
+    # : (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+    def method_missing: (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+
+    # : (Symbol name, ?bool all) -> bool
+    def respond_to_missing?: (Symbol name, ?bool all) -> bool
+  end
+
+  # What `do` and `expect` see: each given record by its name (read again
+  # from the database), `result` and `error` (of the one action, or of the
+  # last in a race), `results` and `errors` (one per action, in the order the
+  # suspicion lists them), `calls(X, :verb)`, and everything the spec has.
+  class Scope
+    @example: untyped
+
+    @records: Hash[Symbol, untyped]
+
+    @calls: untyped
+
+    # : (untyped example, Hash[Symbol, untyped] records, ?result: untyped, ?error: Exception?, ?results: Array[untyped], ?errors: Array[Exception?], ?calls: Calls?) -> void
+    def initialize: (untyped example, Hash[Symbol, untyped] records, ?result: untyped, ?error: Exception?, ?results: Array[untyped], ?errors: Array[Exception?], ?calls: Calls?) -> void
+
+    attr_reader result: untyped
+
+    attr_reader error: Exception?
+
+    attr_reader results: Array[untyped]
+
+    attr_reader errors: Array[Exception?]
+
+    OWN: Array[Symbol]
+
+    # The instance variables a `do` set, so `expect` reads `@payment` as
+    # `do` left it (a record read again).
+    # : () -> Array[Symbol]
+    def own_ivars: () -> Array[Symbol]
+
+    # : (Scope from, World world) -> Array[Symbol]
+    def take_ivars: (Scope from, World world) -> Array[Symbol]
+
+    # : (untyped owner, untyped verb) -> Array[untyped]
+    def calls: (untyped owner, untyped verb) -> Array[untyped]
+
+    # : (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+    def method_missing: (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+
+    # : (Symbol name, ?bool all) -> bool
+    def respond_to_missing?: (Symbol name, ?bool all) -> bool
+  end
+
+  # Every call to one method of an outside service's client (`PaymentGateway`
+  # and `PaymentGateway.client` both name it), counted from the action on.
+  class Calls
+    @specs: Array[[ untyped, untyped ]]
+
+    @seen: Hash[[ String?, Symbol ], Array[untyped]]
+
+    # : (Array[[untyped, untyped]] specs) -> void
+    def initialize: (Array[[ untyped, untyped ]] specs) -> void
+
+    # : () -> Array[[untyped, untyped]]
+    def watch: () -> Array[[ untyped, untyped ]]
+
+    # : (untyped owner, untyped verb) -> Array[untyped]
+    def of: (untyped owner, untyped verb) -> Array[untyped]
+  end
+
+  # An action or an expectation line, as the suspicion wrote it. +parts+ are
+  # the operands of `a && b` (or `a || b`), each [text, block, observe].
+  class Act < Data
+    attr_reader text(): String
+
+    attr_reader block(): scope_block
+
+    def self.new: (String text, scope_block block) -> instance
+                | (text: String, block: scope_block) -> instance
+
+    def self.members: () -> [ :text, :block ]
+
+    def members: () -> [ :text, :block ]
+  end
+
+  class Expect < Data
+    attr_reader text(): String
+
+    attr_reader observe(): scope_block?
+
+    attr_reader parts(): Array[[ String, scope_block, scope_block? ]]
+
+    attr_reader block(): scope_block
+
+    def self.new: (String text, scope_block? observe, Array[[ String, scope_block, scope_block? ]] parts, scope_block block) -> instance
+                | (text: String, observe: scope_block?, parts: Array[[ String, scope_block, scope_block? ]], block: scope_block) -> instance
+
+    def self.members: () -> [ :text, :observe, :parts, :block ]
+
+    def members: () -> [ :text, :observe, :parts, :block ]
+  end
+
+  # : (String text) { () [self: Scope] -> untyped } -> Act
+  def act: (String text) { () [self: Scope] -> untyped } -> Act
+
+  # : (String text, ?observe: scope_block?, ?parts: Array[[String, scope_block, scope_block?]]) { () [self: Scope] -> untyped } -> Expect
+  def expectation: (String text, ?observe: scope_block?, ?parts: Array[[ String, scope_block, scope_block? ]]) { () [self: Scope] -> untyped } -> Expect
+
+  # Runs one suspicion: +given+ makes the records (in a World), +acts+ is one
+  # action or two (a race at +pause+), +expects+ must all hold afterwards.
+  # +calls+ lists the outside-service methods `expect` counts. +shared+ is
+  # the example's binding, which holds the locals `do` sets and `expect` reads.
+  # : (String id, given: given_block, acts: Array[Act], expects: Array[Expect], ?calls: Array[[untyped, untyped]], ?pause: String?, ?errors: bool, ?shared: Binding?) -> void
+  def holdfast_suspicion: (String id, given: given_block, acts: Array[Act], expects: Array[Expect], ?calls: Array[[ untyped, untyped ]], ?pause: String?, ?errors: bool, ?shared: Binding?) -> void
+
+  # The error's first line and the line of the kept spec it came from, so a
+  # row never reads ": ".
+  # : (Exception error) -> String
+  def self.first_lines: (Exception error) -> String
+
+  # : (given_block given, Array[Act] acts, Array[Expect] expects, Array[[untyped, untyped]] calls, String? pause, Binding? shared) -> Hash[String, untyped]
+  def holdfast_race: (given_block given, Array[Act] acts, Array[Expect] expects, Array[[ untyped, untyped ]] calls, String? pause, Binding? shared) -> Hash[String, untyped]
+
+  # : (given_block given, Array[Act] acts, Array[Integer] positions, Array[Expect] expects, Array[[untyped, untyped]] call_specs, pause: String?, errors: bool, ?trace: bool, ?shared: Binding?) -> Hash[String, untyped]
+  def holdfast_once: (given_block given, Array[Act] acts, Array[Integer] positions, Array[Expect] expects, Array[[ untyped, untyped ]] call_specs, pause: String?, errors: bool, ?trace: bool, ?shared: Binding?) -> Hash[String, untyped]
+
+  # Ruby expectations that name `calls(X, :verb)` count those calls too.
+  # : (Array[Expect] expects) -> Array[[untyped, String]]
+  def self.counted: (Array[Expect] expects) -> Array[[ untyped, String ]]
+
+  # A compound expectation that fails names each operand that failed and
+  # what it saw, instead of the whole line.
+  # : (Scope scope, Expect e) -> Hash[String, untyped]
+  def holdfast_expect: (Scope scope, Expect e) -> Hash[String, untyped]
+
+  # The receiver of the first call to +name+ in an expectation: `response`
+  # in `response.status == 200`.
+  # : (String text, (String | Symbol)? name) -> String?
+  def self.receiver_of: (String text, (String | Symbol)? name) -> String?
+
+  # The app methods an action called, in order, so a race whose pause point
+  # nobody reached can name where to pause instead.
+  # : (Array[String]? called) { () -> Hash[Symbol, untyped] } -> Hash[Symbol, untyped]
+  def holdfast_traced: (Array[String]? called) { () -> Hash[Symbol, untyped] } -> Hash[Symbol, untyped]
+
+  # A request that matched no route, or that the app turned away before it
+  # reached any code (401, 403), checked nothing the suspicion is about,
+  # unless `expect` names that status. A 404 the app itself answered (a
+  # record it did not find) is how the request ended.
+  # : (Array[Expect] expects) -> void
+  def holdfast_reached!: (Array[Expect] expects) -> void
+
+  # Rails routes and Grape endpoints, as [verb, path pattern].
+  # : () -> Array[[String, String]]
+  def self.routes: () -> Array[[ String, String ]]
+
+  # : (String verb, String path) -> bool
+  def self.route?: (String verb, String path) -> bool
+
+  # An error the app's own code raised (a refusal, a nil it did not expect)
+  # is how the action ended, and `expect` is checked against it. An error
+  # from the suspicion's own line (a misspelt name, a wrong argument list)
+  # means the action never ran as written. In a race, or when `expect`
+  # names `error` or `raises`, every error is how the action ended, except
+  # a name the tree does not have: that tree cannot run the suspicion.
+  # : (Hash[Symbol, untyped] records, Act act, errors: bool) -> Hash[Symbol, untyped]
+  def holdfast_step: (Hash[Symbol, untyped] records, Act act, errors: bool) -> Hash[Symbol, untyped]
+
+  # A `do` of several lines is one item of the Markdown list it is shown in.
+  # : (String text) -> String
+  def self.one_line: (String text) -> String
+
+  CALL_SHAPE: Regexp
+
+  # : (Exception error) -> bool
+  def self.app_error?: (Exception error) -> bool
+
+  # The first action runs on its own thread until it reaches the pause point;
+  # the second runs to its end (or until it waits on a lock the first holds);
+  # then the first goes on.
+  # : (World world, Array[Act] acts, String point) -> Array[Hash[Symbol, untyped]]
+  def holdfast_interleave: (World world, Array[Act] acts, String point) -> Array[Hash[Symbol, untyped]]
+
+  # Whether the second action is still running after a second, or (on
+  # PostgreSQL) sooner, as soon as its connection waits on a lock the held
+  # action has: a fixed wait cost a second per held order.
+  # : (Thread thread, untyped pid, ?limit: Float) -> bool
+  def self.blocked?: (Thread thread, untyped pid, ?limit: Float) -> bool
+
+  # A race is confirmed when an interleaved order breaks `expect` and ends in
+  # a way neither serial order ends: what each action did and what `expect`
+  # saw. An interleaving that ends like a serial order is only an order.
+  # : (Hash[String, Hash[String, untyped]] serial, Hash[String, Hash[String, untyped]] held, String point) -> Hash[String, untyped]
+  def holdfast_race_verdict: (Hash[String, Hash[String, untyped]] serial, Hash[String, Hash[String, untyped]] held, String point) -> Hash[String, untyped]
+
+  # How a run ended: each action's value (or the class it raised) and what
+  # `expect` saw. A record the actions made is named by its class only and a
+  # time by nothing, since ids and clocks differ from one order to the next
+  # without the end differing; a given record keeps its id.
+  TIME: Regexp
+
+  # : (Hash[String, untyped] run) -> String
+  def self.end_of: (Hash[String, untyped] run) -> String
+
+  # : (Hash[String, untyped] run) -> String
+  def self.end_text: (Hash[String, untyped] run) -> String
+
+  # : (untyped value) -> String?
+  def holdfast_show: (untyped value) -> String?
+
+  # SQLite has no TRUNCATE; DELETE with the foreign keys off empties the
+  # tables in any order, and sqlite_sequence holds the ids to restart.
+  # : () -> untyped
+  def holdfast_truncate: () -> untyped
+
+  # : (Hash[String, untyped] report) -> Integer?
+  def holdfast_write: (Hash[String, untyped] report) -> Integer?
+end

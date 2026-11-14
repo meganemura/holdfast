@@ -1,0 +1,57 @@
+# Generated from lib/holdfast/runtime/observe.rb with RBS::Inline
+
+module Holdfast
+  module Observe
+    # Ids, foreign keys and timestamps differ between two runs of the same
+    # input, so they never decide a pin.
+    VOLATILE: Regexp
+
+    RECENT: Integer
+
+    NO_ARGS: Array[untyped]
+
+    NO_KWARGS: Hash[String, untyped]
+
+    # @rbs module-self ActiveRecord::Base
+    module Track : ActiveRecord::Base
+      # : (*untyped) -> untyped
+      def _create_record: (*untyped) -> untyped
+
+      # : (*untyped) -> untyped
+      def _update_record: (*untyped) -> untyped
+    end
+
+    # : (untyped context, Hash[String, untyped] input, String target) -> Hash[String, untyped]?
+    def self?.observe: (untyped context, Hash[String, untyped] input, String target) -> Hash[String, untyped]?
+
+    # Paths whose values differ, as "path: base X, head Y" lines.
+    # : (untyped expected, untyped actual, ?String path) -> Array[String]
+    def self?.differences: (untyped expected, untyped actual, ?String path) -> Array[String]
+
+    # : (untyped v) -> String
+    def self?.short: (untyped v) -> String
+
+    # : [T] () { () -> T } -> T?
+    def self?.within_savepoint: [T] () { () -> T } -> T?
+
+    # : (untyped context, untyped code) -> untyped
+    def self?.run_ruby: (untyped context, untyped code) -> untyped
+
+    # : (untyped context, untyped v) -> untyped
+    def self?.value: (untyped context, untyped v) -> untyped
+
+    # : (Array[[Symbol, untyped]] writes) -> Array[Hash[String, untyped]]
+    def self?.written: (Array[[ Symbol, untyped ]] writes) -> Array[Hash[String, untyped]]
+
+    # : (untyped record) -> Hash[String, untyped]
+    def self?.attributes: (untyped record) -> Hash[String, untyped]
+
+    # : (untyped v, ?Integer depth) -> untyped
+    def self?.project: (untyped v, ?Integer depth) -> untyped
+
+    # A time near now comes from the clock, not the input, so it is pinned
+    # as recent only.
+    # : (untyped t) -> String
+    def self?.time: (untyped t) -> String
+  end
+end

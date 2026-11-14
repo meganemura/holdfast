@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 module Holdfast
   # One run: read the record and the change, then run the stages the change
   # calls for. The harness decides what runs from the change alone; the
@@ -7,10 +9,25 @@ module Holdfast
   #   before  select the named targets -> fill and vary -> one row per target
   #   hunt    nothing changed and nothing named: sequences over the whole app
   module Harness
-    Result = Data.define(:change, :verdicts, :notes, :seconds)
+    Result = Data.define(
+      :change, #: Change
+      :verdicts, #: Array[Verdict]
+      :notes, #: Array[String]
+      :seconds #: Hash[String, Float]
+    )
 
+    # @rbs root: String
+    # @rbs base: String?
+    # @rbs named: Array[String]
+    # @rbs relearn: bool?
+    # @rbs only: Array[String]
+    # @rbs sequences: bool?
+    # @rbs budget: Integer?
+    # @rbs observe: bool?
+    # @rbs intent: String?
+    # @rbs return: Result
     def self.run(root, base:, named:, relearn: false, only: [], sequences: false, budget: nil, observe: false, intent: nil)
-      timings = {}
+      timings = {} #: Hash[String, Float]
       record = timed(timings, "record") { Record.load_or_learn(root, relearn:) }
       change = Change.read(root, base_ref: base || record.base_branch, named:)
       unless record.ok?
@@ -21,8 +38,8 @@ module Holdfast
         ])
       end
 
-      verdicts = []
-      notes = []
+      verdicts = [] #: Array[Verdict]
+      notes = [] #: Array[String]
       if change.mode == "hunt"
         verdicts += timed(timings, "hunt") { Stages::Hunt.run(change, record, budget:) }
       else
@@ -50,8 +67,10 @@ module Holdfast
       Result.new(change:, verdicts: verdicts.sort_by { [_1.target == "(hunt)" ? -1 : KINDS.index(_1.kind), _1.stage == "caller" ? 0 : 1, _1.target] }, notes:, seconds: timings)
     end
 
+    #: (Change) -> Array[String]
     def self.changed_files(change) = Change.git(change.root, "diff", "--name-only", change.base, change.head, "--", "app").lines.map(&:strip)
 
+    #: [T] (Hash[String, Float] timings, String name) { () -> T } -> T
     def self.timed(timings, name)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       yield
@@ -59,6 +78,7 @@ module Holdfast
       timings[name] = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).round(1)
     end
 
+    #: (Change, Stages::Fill::Pins) -> Array[Verdict]
     def self.before_rows(change, pins)
       declared = pins.inputs.declared_errors
       # An error the method raises itself (`raise Refused, ...`) is its
@@ -82,6 +102,7 @@ module Holdfast
       rows
     end
 
+    #: (Stages::Fill::Gap) -> Verdict
     def self.gap_row(gap)
       step = gap.draft ? "fill #{gap.draft.holes.join(", ")} in #{Stages::Fold.rel(gap.draft.path)}, copy it to .holdfast/evidence/, then holdfast run" : "write .holdfast/evidence/#{Holdfast.slug(gap.target.name)}.inputs.json, then holdfast run"
       Verdict.of(target: gap.target.name, stage: "fill", kind: "unchecked", reason: "no pin: #{gap.reason}", next_step: step)

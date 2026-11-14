@@ -1,0 +1,73 @@
+# Generated from lib/holdfast/verdict.rb with RBS::Inline
+
+module Holdfast
+  # The one row every stage returns: one per changed method, per changed
+  # value, or per hunted area. +evidence+ is the list of what was checked
+  # under it (tests that reached the changed lines, pins, readers), so a row
+  # never reads as more than it covered. +next_step+ is the one thing to do
+  # after reading it; every row has one.
+  class Verdict < Data
+    attr_reader target(): String
+
+    attr_reader stage(): String
+
+    attr_reader kind(): String
+
+    attr_reader reason(): String
+
+    attr_reader scope(): String?
+
+    attr_reader evidence(): Array[String]
+
+    attr_reader repro(): String?
+
+    attr_reader next_step(): String
+
+    attr_reader shown(): bool
+
+    def self.new: (String target, String stage, String kind, String reason, String? scope, Array[String] evidence, String? repro, String next_step, bool shown) -> instance
+                | (target: String, stage: String, kind: String, reason: String, scope: String?, evidence: Array[String], repro: String?, next_step: String, shown: bool) -> instance
+
+    def self.members: () -> [ :target, :stage, :kind, :reason, :scope, :evidence, :repro, :next_step, :shown ]
+
+    def members: () -> [ :target, :stage, :kind, :reason, :scope, :evidence, :repro, :next_step, :shown ]
+  end
+
+  class Verdict
+    # @rbs target: String
+    # @rbs stage: String
+    # @rbs kind: String
+    # @rbs reason: String
+    # @rbs next_step: String
+    # @rbs scope: String?
+    # @rbs evidence: Array[String]?
+    # @rbs repro: String?
+    # @rbs shown: bool
+    # @rbs return: Verdict
+    def self.of: (target: String, stage: String, kind: String, reason: String, next_step: String, ?scope: String?, ?evidence: Array[String]?, ?repro: String?, ?shown: bool) -> Verdict
+
+    # : () -> String
+    def to_json_line: () -> String
+  end
+
+  # The order a person reads in: what needs a decision first.
+  KINDS: Array[String]
+
+  # One screen: a row that needs nothing is one line; a row that needs a
+  # decision shows its evidence, its repro and its next step. Everything
+  # else is in verdicts.jsonl.
+  module Summary
+    HEADINGS: Hash[String, String]
+
+    SHOWN: Hash[String, Integer]
+
+    QUIET: Array[String]
+
+    # @rbs header: Array[String]
+    # @rbs verdicts: Array[Verdict]
+    # @rbs mode: String
+    # @rbs rows: String
+    # @rbs return: String
+    def self.markdown: (Array[String] header, Array[Verdict] verdicts, ?mode: String, ?rows: String) -> String
+  end
+end

@@ -1,0 +1,53 @@
+# Generated from lib/holdfast/harness.rb with RBS::Inline
+
+module Holdfast
+  # One run: read the record and the change, then run the stages the change
+  # calls for. The harness decides what runs from the change alone; the
+  # caller only adds evidence (tests, pin inputs) between runs.
+  #   change  select -> fill (inputs or drafts) -> diff -> fold, one row per target
+  #           (+ hunt over the changed areas with --sequences)
+  #   before  select the named targets -> fill and vary -> one row per target
+  #   hunt    nothing changed and nothing named: sequences over the whole app
+  module Harness
+    class Result < Data
+      attr_reader change(): Change
+
+      attr_reader verdicts(): Array[Verdict]
+
+      attr_reader notes(): Array[String]
+
+      attr_reader seconds(): Hash[String, Float]
+
+      def self.new: (Change change, Array[Verdict] verdicts, Array[String] notes, Hash[String, Float] seconds) -> instance
+                  | (change: Change, verdicts: Array[Verdict], notes: Array[String], seconds: Hash[String, Float]) -> instance
+
+      def self.members: () -> [ :change, :verdicts, :notes, :seconds ]
+
+      def members: () -> [ :change, :verdicts, :notes, :seconds ]
+    end
+
+    # @rbs root: String
+    # @rbs base: String?
+    # @rbs named: Array[String]
+    # @rbs relearn: bool?
+    # @rbs only: Array[String]
+    # @rbs sequences: bool?
+    # @rbs budget: Integer?
+    # @rbs observe: bool?
+    # @rbs intent: String?
+    # @rbs return: Result
+    def self.run: (String root, base: String?, named: Array[String], ?relearn: bool?, ?only: Array[String], ?sequences: bool?, ?budget: Integer?, ?observe: bool?, ?intent: String?) -> Result
+
+    # : (Change) -> Array[String]
+    def self.changed_files: (Change) -> Array[String]
+
+    # : [T] (Hash[String, Float] timings, String name) { () -> T } -> T
+    def self.timed: [T] (Hash[String, Float] timings, String name) { () -> T } -> T
+
+    # : (Change, Stages::Fill::Pins) -> Array[Verdict]
+    def self.before_rows: (Change, Stages::Fill::Pins) -> Array[Verdict]
+
+    # : (Stages::Fill::Gap) -> Verdict
+    def self.gap_row: (Stages::Fill::Gap) -> Verdict
+  end
+end

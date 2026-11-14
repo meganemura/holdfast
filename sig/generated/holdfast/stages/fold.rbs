@@ -1,0 +1,90 @@
+# Generated from lib/holdfast/stages/fold.rb with RBS::Inline
+
+module Holdfast
+  module Stages
+    # Turns the test outcomes, the lines each test file ran, the pins and the
+    # gaps into one row per changed method, plus one row per changed value
+    # for the readers that sit outside every changed method. A row is
+    # compared only when a test or a pin ran on both sides and reached the
+    # target's changed lines in this run; a test that only names the method
+    # is listed and does not count.
+    module Fold
+      ORIGIN_ORDER: Array[String]
+
+      # Outcome index => the name of the target whose row lists it.
+      type owners = Hash[Integer, String?]
+
+      # : (Change change, Array[Target] targets, Diff::Result diff, Array[Fill::Pins] pins, Array[Fill::Gap] gaps) -> Array[Verdict]
+      def self.run: (Change change, Array[Target] targets, Diff::Result diff, Array[Fill::Pins] pins, Array[Fill::Gap] gaps) -> Array[Verdict]
+
+      # An added method whose only comparison is a failing caller is part of
+      # that caller's row, not a row of its own.
+      # : (Array[Verdict]) -> Array[Verdict]
+      def self.fold_into_failures: (Array[Verdict]) -> Array[Verdict]
+
+      # file => { "base" => [lines], "head" => [lines] } from the diff hunks.
+      # : (Change) -> changed_lines
+      def self.changed_lines: (Change) -> changed_lines
+
+      # The changed lines of a method's body. Ruby runs a `def` line when
+      # the file loads, so a test that only loaded the file would count as
+      # reaching it; a change to the signature alone counts the whole body.
+      # : (Target t, changed_lines lines) -> Hash[String, Array[Integer]]
+      def self.method_lines: (Target t, changed_lines lines) -> Hash[String, Array[Integer]]
+
+      # : (Target reader, Target t) -> bool
+      def self.within?: (Target reader, Target t) -> bool
+
+      # : (Diff::Result diff, Diff::Outcome outcome, String side, String file) -> Array[Integer]
+      def self.hits: (Diff::Result diff, Diff::Outcome outcome, String side, String file) -> Array[Integer]
+
+      # : (Diff::Result diff, Diff::Outcome outcome, Target t, changed_lines lines) -> bool
+      def self.reached?: (Diff::Result diff, Diff::Outcome outcome, Target t, changed_lines lines) -> bool
+
+      # : (Diff::Result diff, Diff::Outcome outcome, Target reader) -> bool
+      def self.reads_line?: (Diff::Result diff, Diff::Outcome outcome, Target reader) -> bool
+
+      # Each outcome that is not clean belongs to one row, so a failure is
+      # never listed twice: its own target for a pin or an evidence test,
+      # else the first changed method whose lines its file ran.
+      # : (Diff::Result diff, Array[Target] methods, changed_lines lines) -> owners
+      def self.owners: (Diff::Result diff, Array[Target] methods, changed_lines lines) -> owners
+
+      # : (Target t, Array[Drawn::Need] undrawn, Fill::Gap? gap) -> String
+      def self.draw_step: (Target t, Array[Drawn::Need] undrawn, Fill::Gap? gap) -> String
+
+      # : (Target t, Diff::Result diff, changed_lines lines, owners owner, Fill::Pins? pin, Fill::Gap? gap, Array[Target] readers, Change change) -> Verdict
+      def self.method_row: (Target t, Diff::Result diff, changed_lines lines, owners owner, Fill::Pins? pin, Fill::Gap? gap, Array[Target] readers, Change change) -> Verdict
+
+      # : (Diff::Result diff, Target t, changed_lines lines, owners owner) -> Array[String]
+      def self.reached_failures: (Diff::Result diff, Target t, changed_lines lines, owners owner) -> Array[String]
+
+      # +scope+ is the places of the tests that reached or named the target.
+      # : (Target t, String scope, Array[String] details, String span, Fill::Pins? pin, Fill::Gap? gap, ?why: String?) -> Verdict
+      def self.unchecked_method: (Target t, String scope, Array[String] details, String span, Fill::Pins? pin, Fill::Gap? gap, ?why: String?) -> Verdict
+
+      # : (Fill::Pins) -> Array[String]
+      def self.pin_details: (Fill::Pins) -> Array[String]
+
+      # +value+ is the changed value the readers read, as jitcatch names it.
+      # : (untyped value, Array[Target] readers, Diff::Result diff, owners owner, Change change) -> Verdict
+      def self.value_row: (untyped value, Array[Target] readers, Diff::Result diff, owners owner, Change change) -> Verdict
+
+      # : (Diff::Outcome) -> Verdict
+      def self.stray_row: (Diff::Outcome) -> Verdict
+
+      # : (Array[Diff::Outcome]) -> Array[String]
+      def self.groups: (Array[Diff::Outcome]) -> Array[String]
+
+      # : (Array[Diff::Outcome] list, Diff::Outcome first) -> String
+      def self.count: (Array[Diff::Outcome] list, Diff::Outcome first) -> String
+
+      # A pin failure lists the paths that differ; a test failure is its message.
+      # : (Diff::Outcome o, ?Integer limit) -> String
+      def self.difference: (Diff::Outcome o, ?Integer limit) -> String
+
+      # : (String?) -> String
+      def self.rel: (String?) -> String
+    end
+  end
+end

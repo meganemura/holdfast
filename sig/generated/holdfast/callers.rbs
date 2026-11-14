@@ -1,0 +1,75 @@
+# Generated from lib/holdfast/callers.rb with RBS::Inline
+
+module Holdfast
+  # The unchanged code that reads a changed value through something else: a
+  # scope or a method whose own lines did not change but that reads a
+  # constant the change edits, and the methods that call that scope or
+  # method, one or two calls up. A reader of the diff stops at the diff, so
+  # this is where a break hides; each caller becomes a target with a drafted
+  # pin and ranks first.
+  #
+  # jitcatch's brief names the affected methods and their direct and
+  # dynamic callers. The second hop comes from jitcatch's call graph, which
+  # it does not publish, so this reads it through the brief's own instance.
+  module Callers
+    CAP: ::Integer
+
+    class Value < Data
+      attr_reader method(): json
+
+      attr_reader constant(): String?
+
+      attr_reader model(): String?
+
+      attr_reader column(): String?
+
+      attr_reader values(): Array[String]
+
+      attr_reader outside(): String?
+
+      def self.new: (json method, String? constant, String? model, String? column, Array[String] values, String? outside) -> instance
+                  | (method: json, constant: String?, model: String?, column: String?, values: Array[String], outside: String?) -> instance
+
+      def self.members: () -> [ :method, :constant, :model, :column, :values, :outside ]
+
+      def members: () -> [ :method, :constant, :model, :column, :values, :outside ]
+    end
+
+    # jitcatch's index of one side and its call graph are not part of its
+    # published interface, so they stay untyped here.
+    # : (JitCatch::Changes jc, json brief, Change change) -> Array[Target]
+    def self.targets: (JitCatch::Changes jc, json brief, Change change) -> Array[Target]
+
+    # A value this module walks from: a method the brief marks as affected by
+    # a changed constant, or a changed scope.
+    # : (json m, json brief, Change change) -> Value?
+    def self.value_of: (json m, json brief, Change change) -> Value?
+
+    # : (String name, Array[String] known) -> bool
+    def self.skip?: (String name, Array[String] known) -> bool
+
+    # : (String name, Value v, String through, untyped head_idx, untyped base_idx, Change change) -> Target?
+    def self.target: (String name, Value v, String through, untyped head_idx, untyped base_idx, Change change) -> Target?
+
+    # Test files at base that name the caller's method, or its class and a
+    # request into it; coverage in the run decides which ones reached it.
+    # : (Change change, untyped node) -> Array[String]
+    def self.tests_for: (Change change, untyped node) -> Array[String]
+
+    # The string elements of the first array literal in a source line.
+    # : (String?) -> Array[String]
+    def self.strings: (String?) -> Array[String]
+
+    # Every string listed in the model file's array constants (STATUSES), so
+    # a draw also holds a value neither side's list holds.
+    # : (Change change, String file) -> Array[String]
+    def self.other_strings: (Change change, String file) -> Array[String]
+
+    # The column a scope compares with the constant: `where(status: OPEN)`.
+    # : (String? source, String const) -> String?
+    def self.where_column: (String? source, String const) -> String?
+
+    # : (Prism::Node? node) { (Prism::Node) -> void } -> void
+    def self.walk: (Prism::Node? node) { (Prism::Node) -> void } -> void
+  end
+end

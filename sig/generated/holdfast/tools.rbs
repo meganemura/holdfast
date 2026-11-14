@@ -1,0 +1,25 @@
+# Generated from lib/holdfast/tools.rb with RBS::Inline
+
+module Holdfast
+  # The stages of `holdfast run` load jitcatch and branchout here, so a
+  # bundle that left them out gets a message instead of a LoadError.
+  module Tools
+    # : (String name, String use) -> String
+    def self.missing: (String name, String use) -> String
+
+    # : () -> bool
+    def self.jitcatch!: () -> bool
+
+    # The rescue list of the CLI: JitCatch::Error exists only once jitcatch
+    # is loaded.
+    # : () -> Array[singleton(StandardError)]
+    def self.errors: () -> Array[singleton(StandardError)]
+
+    # branchout runs inside the app's test process, which has the app's
+    # bundle and not necessarily branchout, so it is put on the load path by
+    # directory. Under bundle exec, Gem::Specification sees only the bundle,
+    # so the installed gems are searched by path too.
+    # : () -> String
+    def self.branchout_lib: () -> String
+  end
+end

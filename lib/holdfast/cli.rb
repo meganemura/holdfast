@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 require "optparse"
 require "time"
 require "prism"
@@ -6,11 +8,12 @@ module Holdfast
   # The stated intent belongs to the branch it was given on, so a run on
   # another branch does not show a stale one.
   module Intent
+    #: (String root, String? text) -> String?
     def self.keep(root, text)
       path = File.join(Holdfast.dir(root), "intent.json")
       branch = Change.git(root, "rev-parse", "--abbrev-ref", "HEAD")
       File.write(path, JSON.generate({ "branch" => branch, "text" => text })) if text
-      kept = JSON.parse(File.read(path)) rescue {}
+      kept = JSON.parse(File.read(path)) rescue {} #: json
       kept["branch"] == branch ? kept["text"] : nil
     end
   end
@@ -19,7 +22,7 @@ module Holdfast
   # prints the last summary again. Exit 2 when a row needs a decision
   # (unintended_change or bug_suspect), 1 on a usage error, 0 otherwise.
   module CLI
-    USAGE = <<~TEXT
+    USAGE = <<~TEXT #: String
       usage:
         holdfast run [--base REF] [--target NAME]... [--only NAME]... [--intent TEXT] [--learn] [--sequences] [--observe] [--budget SECONDS]
         holdfast check [FILE]... [--suspect YAML]... [--base REF] [--here]
@@ -34,8 +37,13 @@ module Holdfast
       --repo DIR  run in DIR (default: the working directory)
     TEXT
 
+    # The options by name; each holds the type its flag parses to.
+    # @rbs!
+    #   type options = Hash[Symbol, untyped]
+
+    #: (Array[String]) -> Integer
     def self.start(argv)
-      opts = { repo: Dir.pwd, named: [], only: [], suspects: [] }
+      opts = { repo: Dir.pwd, named: [], only: [], suspects: [] } #: options
       args = OptionParser.new do |o|
         o.on("--repo DIR") { opts[:repo] = File.expand_path(_1) }
         o.on("--base REF") { opts[:base] = _1 }
@@ -64,6 +72,7 @@ module Holdfast
       1
     end
 
+    #: (options) -> Integer
     def self.run(opts)
       root = Dir.pwd
       dir = Holdfast.dir(root)
@@ -80,6 +89,7 @@ module Holdfast
       result.verdicts.any? { %w[unintended_change bug_suspect].include?(_1.kind) } ? 2 : 0
     end
 
+    #: (options opts, Array[String] files) -> Integer
     def self.check(opts, files)
       root = Dir.pwd
       FileUtils.mkdir_p(Holdfast.dir(root))
@@ -93,6 +103,7 @@ module Holdfast
       rows.any? { _1.kind == "confirmed" } ? 2 : 0
     end
 
+    #: () -> Integer
     def self.show
       path = File.join(Holdfast.dir(Dir.pwd), "summary.md")
       raise Holdfast::Error, "no run yet; run holdfast run" unless File.file?(path)

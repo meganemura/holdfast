@@ -22,7 +22,8 @@ Gem::Specification.new do |spec|
 
   spec.files = Dir.chdir(__dir__) do
     `git ls-files -z`.split("\x0").select do |path|
-      path.start_with?("bin/", "lib/", "skills/") || %w[LICENSE README.md README.ja.md].include?(path)
+      # sig/ holds the generated signatures; sig-deps/ stays out of the gem.
+      path.start_with?("bin/", "lib/", "sig/", "skills/") || %w[LICENSE README.md README.ja.md].include?(path)
     end
   end
   spec.bindir = "bin"

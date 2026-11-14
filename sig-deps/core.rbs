@@ -1,0 +1,39 @@
+# Corrections to the core signatures, for calls lib/ makes that they do
+# not cover.
+
+# Kernel#Array infers an empty element type from an untyped argument (a
+# value read from JSON), so every Array(json["key"]) would be an array of
+# nothing. A value of unknown type gives an array of unknown values.
+module Kernel
+  def self?.Array: (untyped) -> Array[untyped]
+                 | ...
+end
+
+# String#scan gives each match as String | Array[String?], so a block or a
+# map that destructures the captures of a pattern with groups gets nil for
+# each one. The captures are read as unknown values instead.
+class String
+  def scan: (Regexp) -> Array[untyped]
+          | (Regexp) { (untyped) -> void } -> String
+          | ...
+end
+
+# A Data class takes its members as keywords; the core signature declares
+# no initialize, so a subclass that sets a default and calls super with
+# keywords would match Object#initialize instead.
+class Data
+  private def initialize: (*untyped, **untyped) -> void
+end
+
+# Time.utc takes its parts as positional arguments, which the hunt splats
+# from a list the area wrote.
+class Time
+  def self.utc: (*untyped) -> Time
+              | ...
+end
+
+# Process.spawn is the same call as Kernel#spawn, which the core signature
+# declares only on Kernel.
+module Process
+  def self.spawn: (Hash[String, String] env, *String args, **untyped) -> Integer
+end

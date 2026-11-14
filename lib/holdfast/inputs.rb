@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 module Holdfast
   # The pin inputs of one target, in branchout's format plus three keys of
   # holdfast's own: "change": true on an input the change is meant to alter,
@@ -9,12 +11,18 @@ module Holdfast
   #                  "args": [], "draws": {"days": {"integers": [0, 40]}},
   #                  "cases": 20, "change_when": "days > 10"}]}
   class Inputs
-    Entry = Data.define(:input, :change, :note)
-    OWN_KEYS = %w[change raises change_when draws cases].freeze
+    Entry = Data.define(
+      :input, #: json
+      :change, #: bool
+      :note #: String?
+    )
+    OWN_KEYS = %w[change raises change_when draws cases].freeze #: Array[String]
     SEED = 20_261_107
 
+    #: (String root, String target) -> String
     def self.path(root, target) = File.join(Holdfast.dir(root), "evidence", "#{Holdfast.slug(target)}.inputs.json")
 
+    #: (String root, String target, ?boundaries: Array[Integer]) -> Inputs?
     def self.read(root, target, boundaries: [])
       file = path(root, target)
       return nil unless File.file?(file)
@@ -25,22 +33,31 @@ module Holdfast
       raise Holdfast::Error, "#{file} is not JSON: #{e.message.lines.first.strip}"
     end
 
-    attr_reader :file, :raw
+    attr_reader :file #: String
+    attr_reader :raw #: json
 
+    # @rbs @boundaries: Array[Integer]
+    # @rbs @entries: Array[Entry]?
+
+    #: (String file, json raw, Array[Integer] boundaries) -> void
     def initialize(file, raw, boundaries)
       @file, @raw, @boundaries = file, raw, boundaries
     end
 
+    #: () -> Array[Entry]
     def entries
       @entries ||= Array(raw["inputs"]).map { Entry.new(input: _1.except(*OWN_KEYS), change: _1["change"] == true, note: _1["note"]) } +
                    Array(raw["generate"]).each_with_index.flat_map { |spec, i| generated(spec, i) }
     end
 
+    #: () -> Array[String]
     def declared_errors = Array(raw["inputs"]).filter_map { _1["raises"] }
+    #: () -> Integer
     def generated_count = entries.count { _1.note.to_s.start_with?("drawn ") }
 
     private
 
+    #: (json spec, Integer index) -> Array[Entry]
     def generated(spec, index)
       draws = spec.fetch("draws") { raise Holdfast::Error, "#{file} generate[#{index}] has no \"draws\"" }
       values = drawn_values(draws, spec.fetch("cases", 20), SEED + index)
@@ -55,6 +72,7 @@ module Holdfast
     # hegel draws the values; integer ranges also get each boundary literal of
     # the target, one below it and one above it, so every side of a
     # comparison the method makes gets at least one input.
+    #: (Hash[String, json] draws, Integer cases, Integer seed) -> Array[Hash[String, untyped]]
     def drawn_values(draws, cases, seed)
       finite = draws.values.map { _1["one_of"] || (_1["booleans"] && [true, false]) }
       # A small finite space is listed whole; a random draw from it repeats.
@@ -63,17 +81,18 @@ module Holdfast
       end
 
       require "hegel"
-      found = []
+      found = [] #: Array[Hash[String, untyped]]
       Hegel.test(test_cases: cases, derandomize: true, seed:, verbosity: :quiet) do |tc|
         found << draws.to_h { |name, kind| [name, tc.draw(generator(kind))] }
       end
       edges = draws.select { _2.key?("integers") }.flat_map do |name, kind|
         low, high = kind["integers"]
         @boundaries.flat_map { [_1 - 1, _1, _1 + 1] }.select { (low..high).cover?(_1) }.map { |value| [name, value] }
-      end
+      end #: Array[[String, Integer]]
       found + edges.map { |name, value| (found.first || {}).merge(name => value) }
     end
 
+    #: (json kind) -> Hegel::Generator
     def generator(kind)
       g = Hegel::Generators
       case kind.keys.first
@@ -84,6 +103,8 @@ module Holdfast
       end
     end
 
+    # A JSON value of any shape, with each draw filled in.
+    #: (untyped value, Hash[String, untyped] names) -> untyped
     def fill(value, names)
       case value
       when Hash
@@ -96,6 +117,7 @@ module Holdfast
       end
     end
 
+    #: (String condition, Hash[String, untyped] names) -> bool
     def condition_holds?(condition, names)
       scope = Object.new
       names.each { |name, v| scope.define_singleton_method(name) { v } }

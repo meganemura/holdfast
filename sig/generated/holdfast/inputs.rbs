@@ -1,0 +1,80 @@
+# Generated from lib/holdfast/inputs.rb with RBS::Inline
+
+module Holdfast
+  # The pin inputs of one target, in branchout's format plus three keys of
+  # holdfast's own: "change": true on an input the change is meant to alter,
+  # "raises" for an intended error, and a "generate" list whose entries hegel
+  # expands into concrete inputs. The expansion is derandomized with a fixed
+  # seed, so base and head (and every rerun) see the same values.
+  #
+  #   {"generate": [{"receiver": {"ruby": "create(:loan, due_on: Date.new(2026, 1, 1) - %{days})"},
+  #                  "args": [], "draws": {"days": {"integers": [0, 40]}},
+  #                  "cases": 20, "change_when": "days > 10"}]}
+  class Inputs
+    class Entry < Data
+      attr_reader input(): json
+
+      attr_reader change(): bool
+
+      attr_reader note(): String?
+
+      def self.new: (json input, bool change, String? note) -> instance
+                  | (input: json, change: bool, note: String?) -> instance
+
+      def self.members: () -> [ :input, :change, :note ]
+
+      def members: () -> [ :input, :change, :note ]
+    end
+
+    OWN_KEYS: Array[String]
+
+    SEED: ::Integer
+
+    # : (String root, String target) -> String
+    def self.path: (String root, String target) -> String
+
+    # : (String root, String target, ?boundaries: Array[Integer]) -> Inputs?
+    def self.read: (String root, String target, ?boundaries: Array[Integer]) -> Inputs?
+
+    attr_reader file: String
+
+    attr_reader raw: json
+
+    @entries: Array[Entry]?
+
+    @boundaries: Array[Integer]
+
+    # : (String file, json raw, Array[Integer] boundaries) -> void
+    def initialize: (String file, json raw, Array[Integer] boundaries) -> void
+
+    # : () -> Array[Entry]
+    def entries: () -> Array[Entry]
+
+    # : () -> Array[String]
+    def declared_errors: () -> Array[String]
+
+    # : () -> Integer
+    def generated_count: () -> Integer
+
+    private
+
+    # : (json spec, Integer index) -> Array[Entry]
+    def generated: (json spec, Integer index) -> Array[Entry]
+
+    # hegel draws the values; integer ranges also get each boundary literal of
+    # the target, one below it and one above it, so every side of a
+    # comparison the method makes gets at least one input.
+    # : (Hash[String, json] draws, Integer cases, Integer seed) -> Array[Hash[String, untyped]]
+    def drawn_values: (Hash[String, json] draws, Integer cases, Integer seed) -> Array[Hash[String, untyped]]
+
+    # : (json kind) -> Hegel::Generator
+    def generator: (json kind) -> Hegel::Generator
+
+    # A JSON value of any shape, with each draw filled in.
+    # : (untyped value, Hash[String, untyped] names) -> untyped
+    def fill: (untyped value, Hash[String, untyped] names) -> untyped
+
+    # : (String condition, Hash[String, untyped] names) -> bool
+    def condition_holds?: (String condition, Hash[String, untyped] names) -> bool
+  end
+end

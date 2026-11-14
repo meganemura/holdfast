@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- The gem ships RBS signatures in `sig/generated/`, written by rbs-inline from the type comments in `lib/` and checked with Steep.
 - `holdfast run` no longer fails on a changed scope that splats a constant into `where` (`where(**OPEN)`); that scope names no column.
 - A pin is no longer drafted from a scope given as a block argument (`scope :open, &OPEN`): its row names no def found in place of failing.
 - A pin is no longer drafted from a scope whose lambda reads `it` or `_1`: its row asks for the inputs as it does for any other parameter, in place of failing.

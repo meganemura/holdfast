@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 module Holdfast
   # `holdfast check`: the agent reads the code and writes what it suspects;
   # holdfast turns each suspicion into a spec that builds the world with the
@@ -7,14 +9,35 @@ module Holdfast
   # spec/holdfast/<branch>/), refuted (what was observed), or could_not_run (the
   # exact error, and which part of `given` or `do` it came from).
   module Check
-    KEYS = %w[says given do race pause expect].freeze
-    Suspicion = Data.define(:id, :says, :given, :acts, :pause, :expects, :calls, :errors, :source, :shared)
-    SUPPORT = %w[spec/holdfast spec/support spec/factories spec/rails_helper.rb spec/spec_helper.rb test/support test/factories test/test_helper.rb].freeze
-    SIDE_NUMBERS = { "base" => "c1", "head" => "c2" }.freeze
-    COMPARE = %i[== != < <= > >= === =~ include? eql? equal?].freeze
+    KEYS = %w[says given do race pause expect].freeze #: Array[String]
 
+    # @rbs!
+    #   # One `expect` line: its text, the Ruby that checks it, what to show
+    #   # when it fails, its operands, and the calls and errors it reads.
+    #   type expectation = Hash[Symbol, untyped]
+
+    # +calls+ are the [class, method] pairs `expect` counts; +shared+ the
+    # locals `do` sets and `expect` reads.
+    Suspicion = Data.define(
+      :id, #: String
+      :says, #: String
+      :given, #: Hash[untyped, untyped]
+      :acts, #: Array[String]
+      :pause, #: String?
+      :expects, #: Array[expectation]
+      :calls, #: Array[[String, String]]
+      :errors, #: bool
+      :source, #: String
+      :shared #: Array[Symbol]
+    )
+    SUPPORT = %w[spec/holdfast spec/support spec/factories spec/rails_helper.rb spec/spec_helper.rb test/support test/factories test/test_helper.rb].freeze #: Array[String]
+    SIDE_NUMBERS = { "base" => "c1", "head" => "c2" }.freeze #: Hash[String, String]
+    COMPARE = %i[== != < <= > >= === =~ include? eql? equal?].freeze #: Array[Symbol]
+
+    # The rows, the summary header, and where they were written.
+    #: (String root, files: Array[String], inline: Array[String], ?base: String?, ?here: bool?) -> [Array[Verdict], Array[String], Place]
     def self.run(root, files:, inline:, base: nil, here: false)
-      timings = {}
+      timings = {} #: Hash[String, Float]
       record = Harness.timed(timings, "record") { Record.load_or_learn(root) }
       raise Holdfast::Error, "project setup failed (#{record.failure}); fix it, then holdfast run --learn" unless record.ok?
 
@@ -39,20 +62,29 @@ module Holdfast
     # Specs and outputs of one branch, so a branch switch neither mixes kept
     # specs nor shows another branch's rows. A detached HEAD is keyed by its
     # commit.
-    Place = Data.define(:key, :label) do
+    Place = Data.define(
+      :key, #: String
+      :label #: String
+    )
+
+    class Place
+      #: (String) -> Place
       def self.of(root)
-        branch = Change.git(root, "rev-parse", "--abbrev-ref", "HEAD")
+        branch = Change.git(root, "rev-parse", "--abbrev-ref", "HEAD") #: String?
         branch = nil if branch == "HEAD"
         sha = Change.git(root, "rev-parse", "--short=7", "HEAD")
         new(key: branch ? Holdfast.slug(branch) : sha, label: branch ? "branch #{branch}" : "detached HEAD #{sha}")
       end
 
+      #: () -> String
       def specs = "spec/holdfast/#{key}"
+      #: () -> String
       def out = ".holdfast/check/#{key}"
     end
 
     # What the rows were checked on, so a run that compared with a base says
     # which files made it a change, and one that did not says so.
+    #: (Change change, bool? here) -> String
     def self.scope_line(change, here)
       base = "#{change.base_label} (#{change.short(change.base)})"
       return "no change: checks run on the current tree only (#{change.tree_label}); app, lib, config, db and the Gemfile match #{base}" unless change.changed?
@@ -64,6 +96,7 @@ module Holdfast
 
     # A file holds a list of suspicions (or `suspicions:` with one); each
     # --suspect is one suspicion as a YAML flow mapping.
+    #: (Array[String] files, Array[String] inline) -> Array[Suspicion]
     def self.parse(files, inline)
       raw = files.flat_map do |f|
         doc = begin
@@ -90,26 +123,31 @@ module Holdfast
     # do, expect or pause is quoted before YAML reads it. So is an item of a
     # block list under race or expect, and any other plain value that holds
     # `: ` (a given written as Ruby), which YAML would refuse.
+    #: (String text) -> String
     def self.quote_ruby(text)
       quote = ->(s) { "'#{s.gsub("'", "''")}'" }
       # In `expect: [no error, calls(X, :y).empty?]` each item is quoted,
       # since `:y` in a YAML flow list is not a value.
       text = text.gsub(/^(\s*(?:-\s+)?(?:race|expect):[ \t]+)\[(.*)\][ \t]*$/) do
-        "#{$1}[#{flow_items($2).map { |item| Prism.parse(item).value.statements.body.then { _1.size == 1 && _1.first.is_a?(Prism::StringNode) } ? item : quote.(item) }.join(", ")}]"
+        list = $2 #: String
+        "#{$1}[#{flow_items(list).map { |item| Prism.parse(item).value.statements.body.then { _1.size == 1 && _1.first.is_a?(Prism::StringNode) } ? item : quote.(item) }.join(", ")}]"
       end
       text = text.gsub(/^(\s*(?:-\s+)?(?:says|do|expect|pause):[ \t]+)(?!['"\[{|>])(\S.*?)[ \t]*$/) { "#{$1}#{quote.($2)}" }
       text = text.gsub(/^(\s*(?:race|expect):[ \t]*\n)((?:\s+-[ \t]+.*\n?)+)/) do
-        $1 + $2.gsub(/^(\s+-[ \t]+)(?!['"\[{|>])(\S.*?)[ \t]*$/) { "#{$1}#{quote.($2)}" }
+        head = $1 #: String
+        items = $2 #: String
+        head + items.gsub(/^(\s+-[ \t]+)(?!['"\[{|>])(\S.*?)[ \t]*$/) { "#{$1}#{quote.($2)}" }
       end
       text.gsub(/^(\s+\w+:[ \t]+)(?!['"\[{|>&*!])(\S.*: .*?)[ \t]*$/) { "#{$1}#{quote.($2)}" }
     end
 
     # The items of a flow list, split at the commas outside brackets and
     # quotes.
+    #: (String text) -> Array[String]
     def self.flow_items(text)
       items = [+""]
       depth = 0
-      quote = nil
+      quote = nil #: String?
       text.each_char do |c|
         if quote
           quote = nil if c == quote
@@ -125,6 +163,7 @@ module Holdfast
       items.map(&:strip).reject(&:empty?)
     end
 
+    #: (untyped h, Integer i, String from) -> Suspicion
     def self.suspicion(h, i, from)
       raise Holdfast::Error, "suspicion #{i + 1} in #{from} is not a mapping" unless h.is_a?(Hash)
 
@@ -140,7 +179,7 @@ module Holdfast
       ruby = ->(v) { v.is_a?(Hash) && v.size == 1 ? "#{v.keys.first}: #{v.values.first}" : v.to_s }
       %w[do expect race].each { |k| h[k] = h[k].is_a?(Array) ? h[k].map(&ruby) : ruby.(h[k]) if h.key?(k) }
       says = h["says"].to_s.strip
-      calls = []
+      calls = [] #: Array[[String, String]]
       errors = false
       expects = Array(h["expect"]).map(&:to_s).map do |text|
         e = expectation(text)
@@ -161,14 +200,16 @@ module Holdfast
       raise Holdfast::Error, "#{label}: `expect` reads #{unset.join(", ")}, which no `do` sets; set it in `do`, or read the record by its `given` name" if unset.any?
       # Named by its text, not its place in the file: a kept spec from an
       # earlier run is the same suspicion only when it says the same thing.
-      text = says.empty? ? acts.first : says
-      Suspicion.new(id: "#{Holdfast.slug(text).tr("-", "_")[0, 44].sub(/_\z/, "")}_#{Digest::SHA1.hexdigest(text)[0, 6]}",
+      text = says.empty? ? acts.first : says #: String
+      stem = Holdfast.slug(text).tr("-", "_")[0, 44] #: String
+      Suspicion.new(id: "#{stem.sub(/_\z/, "")}_#{Digest::SHA1.hexdigest(text)[0, 6]}",
                     says:, given: Hash(h["given"]), acts:, pause: h["pause"]&.to_s,
                     expects:, calls:, errors:, source: from, shared:)
     end
 
     # A line that is not Ruby fails here, before any database work, naming
     # the line, instead of as a spec rspec cannot load.
+    #: (String code, String where) -> void
     def self.ruby!(code, where)
       error = Prism.parse(code).errors.first or return
       raise Holdfast::Error, "#{where} is not Ruby (#{error.message} at column #{error.location.start_column + 1}): #{code}"
@@ -176,16 +217,18 @@ module Holdfast
 
     IVAR_NODES = { write: [Prism::InstanceVariableWriteNode, Prism::InstanceVariableOperatorWriteNode, Prism::InstanceVariableOrWriteNode,
                            Prism::InstanceVariableAndWriteNode, Prism::InstanceVariableTargetNode],
-                   read: [Prism::InstanceVariableReadNode] }.freeze
+                   read: [Prism::InstanceVariableReadNode] }.freeze #: Hash[Symbol, Array[Class]]
 
+    #: (String code, Symbol kind) -> Array[Symbol]
     def self.ivars(code, kind)
-      walk = ->(n) { [n, *n.compact_child_nodes.flat_map(&walk)] }
+      walk = ->(n) { [n, *n.compact_child_nodes.flat_map(&walk)] } #: ^(Prism::Node) -> Array[untyped]
       walk.(Prism.parse(code).value).select { |n| IVAR_NODES.fetch(kind).any? { n.is_a?(_1) } }.map(&:name)
     end
 
     # The few lines an agent writes most often, and Ruby for the rest. Each
     # operand of a top-level `&&` or `||` may be a short form too, so
     # `no error && fine.paid?` is two checks, not a call to `no`.
+    #: (String text) -> expectation
     def self.expectation(text)
       t = text.strip
       pieces, ops = logic_split(t)
@@ -199,6 +242,7 @@ module Holdfast
       { text: t, ruby:, observe: nil, parts:, calls: forms.flat_map { _1[:calls] }.uniq, errors: forms.any? { _1[:errors] } }
     end
 
+    #: (String t) -> expectation?
     def self.short_form(t)
       case t
       when /\Ano error\z/i then { text: t, ruby: "error.nil?", observe: "error", calls: [], errors: true }
@@ -211,6 +255,7 @@ module Holdfast
       end
     end
 
+    #: (String t) -> expectation
     def self.ruby_form(t)
       parts = operands(t)
       { text: t, ruby: t, observe: (observed_side(t) if parts.empty?), parts: parts.map { [_1, _1, observed_side(_1)] },
@@ -219,21 +264,23 @@ module Holdfast
 
     # The operands of the `&&` and `||` outside brackets and quotes, and the
     # operators between them. Text, not Prism: a short form is not Ruby.
+    #: (String text) -> [Array[String], Array[String]]
     def self.logic_split(text)
       pieces = [+""]
-      ops = []
+      ops = [] #: Array[String]
       depth = 0
-      quote = nil
+      quote = nil #: String?
       i = 0
       while i < text.size
-        c = text[i]
+        c = text[i] #: String
         if quote
           quote = nil if c == quote && text[i - 1] != "\\"
         elsif %w[" '].include?(c) then quote = c
         elsif "([{".include?(c) then depth += 1
         elsif ")]}".include?(c) then depth -= 1
         elsif depth.zero? && %w[&& ||].include?(text[i, 2])
-          ops << text[i, 2]
+          op = text[i, 2] #: String
+          ops << op
           pieces << +""
           i += 2
           next
@@ -242,9 +289,10 @@ module Holdfast
         i += 1
       end
       pieces = pieces.map(&:strip)
-      pieces.any?(&:empty?) ? [[text], []] : [pieces, ops]
+      pieces.any?(&:empty?) ? [[text], []] : [pieces, ops] #: [Array[String], Array[String]]
     end
 
+    #: (String ruby) -> untyped
     def self.top_node(ruby)
       node = Prism.parse(ruby).value.statements.body.first
       node = node.body.body.first while node.is_a?(Prism::ParenthesesNode) && node.body.is_a?(Prism::StatementsNode) && node.body.body.size == 1
@@ -253,6 +301,7 @@ module Holdfast
 
     # `a && b && c` is three operands, so a failed line can name the one
     # that failed; a single comparison has none.
+    #: (String ruby) -> Array[String]
     def self.operands(ruby)
       node = top_node(ruby)
       return [] unless node.is_a?(Prism::AndNode) || node.is_a?(Prism::OrNode)
@@ -265,6 +314,7 @@ module Holdfast
     end
 
     # For `a.b == c` show what `a.b` was.
+    #: (String ruby) -> String
     def self.observed_side(ruby)
       node = top_node(ruby)
       return ruby unless node.is_a?(Prism::CallNode) && COMPARE.include?(node.name) && node.receiver
@@ -274,9 +324,10 @@ module Holdfast
       ruby
     end
 
-    RELATIVE = /\A([+-]?)(\d+)\s*(s|m|min|h|d|w)\z/
-    UNITS = { "s" => "seconds", "m" => "minutes", "min" => "minutes", "h" => "hours", "d" => "days", "w" => "weeks" }.freeze
+    RELATIVE = /\A([+-]?)(\d+)\s*(s|m|min|h|d|w)\z/ #: Regexp
+    UNITS = { "s" => "seconds", "m" => "minutes", "min" => "minutes", "h" => "hours", "d" => "days", "w" => "weeks" }.freeze #: Hash[String, String]
 
+    #: (untyped v, Array[String] names) -> String
     def self.value(v, names)
       case v
       when RELATIVE
@@ -292,8 +343,9 @@ module Holdfast
       end
     end
 
+    #: (Hash[untyped, untyped] given) -> Array[String]
     def self.given_lines(given)
-      names = []
+      names = [] #: Array[String]
       given.map do |name, attrs|
         name = name.to_s
         # `{ruby: "..."}` in place of the attributes is the same Ruby a bare
@@ -305,7 +357,7 @@ module Holdfast
           next "build :#{name}, #{ruby.inspect} do #{ruby} end"
         end
         attrs = Hash(attrs).transform_keys(&:to_s)
-        opts = []
+        opts = [] #: Array[String]
         opts << "factory: :#{attrs.delete("factory")}" if attrs.key?("factory")
         opts << "traits: #{Array(attrs.delete("traits")).map { ":#{_1}" }.join(", ").then { "[#{_1}]" }}" if attrs.key?("traits")
         opts += attrs.map { |k, v| "#{k}: #{value(v, names)}" }
@@ -314,6 +366,7 @@ module Holdfast
       end
     end
 
+    #: (Suspicion s, Record record) -> String
     def self.spec(s, record)
       check = lambda do |e|
         observe = e[:observe] ? ", observe: proc { #{e[:observe]} }" : ""
@@ -347,6 +400,7 @@ module Holdfast
       RUBY
     end
 
+    #: (String root, Record record, String side, String? rev, Array[Suspicion] suspicions, Place place) -> json
     def self.run_side(root, record, side, rev, suspicions, place)
       out = File.join(root, place.out, "runs", side)
       FileUtils.rm_rf(out) if out.include?("/.holdfast/check/")
@@ -367,11 +421,11 @@ module Holdfast
         end
       end
       env = Record.side_env(record.data, SIDE_NUMBERS.fetch(side)).merge("BUNDLE_GEMFILE" => File.join(tree, "Gemfile"), "HOLDFAST_CHECK_OUT" => out)
-      log = []
-      if record.side_setup && !schema_current?(root, tree, side)
-        o, st = Open3.capture2e(env, "/bin/sh", "-c", record.side_setup, chdir: tree)
+      log = [] #: Array[String]
+      if (setup = record.side_setup) && !schema_current?(root, tree, side)
+        o, st = Open3.capture2e(env, "/bin/sh", "-c", setup, chdir: tree)
         log << o
-        return { "failure" => "setup on #{side}: `#{record.side_setup}` exited #{st.exitstatus}: #{Record.failure_lines(o).join(" ")}" } unless st.success?
+        return { "failure" => "setup on #{side}: `#{setup}` exited #{st.exitstatus}: #{Record.failure_lines(o).join(" ")}" } unless st.success?
 
         schema_mark(root, tree, side)
       end
@@ -379,7 +433,7 @@ module Holdfast
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       o, = Open3.capture2e(env, "/bin/sh", "-c", "#{record.bundle}rspec #{files.join(" ")} --format progress --format json --out #{File.join(out, "rspec.json")}", chdir: tree)
       File.write(File.join(out, "rspec.log"), o)
-      rspec = JSON.parse(File.read(File.join(out, "rspec.json"))) rescue {}
+      rspec = JSON.parse(File.read(File.join(out, "rspec.json"))) rescue {} #: json
       reports = suspicions.to_h { |s| [s.id, (JSON.parse(File.read(File.join(out, "#{s.id}.json"))) rescue nil)] }
       examples = Array(rspec["examples"]).to_h { [File.basename(_1["file_path"].to_s, "_spec.rb"), _1] }
       { "rev" => rev, "out" => out, "reports" => reports, "examples" => examples, "log" => o,
@@ -392,11 +446,16 @@ module Holdfast
     end
 
     # A side's database is set up again only when its schema file changed.
+    #: (String tree) -> String
     def self.schema_digest(tree) = %w[db/schema.rb db/structure.sql].filter_map { File.file?(File.join(tree, _1)) && Digest::SHA1.file(File.join(tree, _1)).hexdigest }.join
+    #: (String root, String side) -> String
     def self.schema_mark_path(root, side) = File.join(Holdfast.dir(root), "check-#{side}.schema")
+    #: (String root, String tree, String side) -> bool
     def self.schema_current?(root, tree, side) = File.file?(schema_mark_path(root, side)) && File.read(schema_mark_path(root, side)) == schema_digest(tree)
+    #: (String root, String tree, String side) -> Integer
     def self.schema_mark(root, tree, side) = File.write(schema_mark_path(root, side), schema_digest(tree))
 
+    #: (json run, Suspicion s) -> json
     def self.side_result(run, s)
       return { "result" => "could_not_run", "phase" => "setup", "error" => run["failure"] } if run["failure"]
 
@@ -416,6 +475,7 @@ module Holdfast
       { "result" => "could_not_run", "phase" => own ? "holdfast" : "spec", "error" => "the spec did not finish: #{ex&.dig("exception", "class")} #{msg[0, 400]}#{" at #{frame[%r{spec/holdfast/\S+}]}" if frame}".squeeze(" ") }
     end
 
+    #: (json r) -> String
     def self.describe(r)
       case r["result"]
       when "could_not_run" then "could not run (#{r["phase"] || "spec"}): #{r["error"]}"
@@ -426,11 +486,13 @@ module Holdfast
       end
     end
 
+    #: (json c) -> String
     def self.check_line(c) = "#{c["expect"]} #{c["holds"] ? "holds" : "fails"}#{" (#{c["observed"]})" if c["observed"]}#{": #{c["failed"].join("; ")}" if c["failed"]}"
 
+    #: (Suspicion s, Hash[String, untyped] reports, Change change, Hash[String, String?] sides, Record record, Place place) -> Verdict
     def self.row(s, reports, change, sides, record, place)
       head = side_result(reports["head"], s)
-      evidence = []
+      evidence = [] #: Array[String]
       evidence << "pause points tried: #{head["pauses"].join("; ")}" if head["pauses"]
       Array(head["orders"]).sort_by { |label, _| label == head["order"] ? 0 : 1 }.each { |label, run| evidence << "#{label}: #{run["result"] == "could_not_run" ? "could not run: #{run["error"]}" : "#{Array(run["outcomes"]).join("; ")}#{"; #{run["paused"]}" if run["paused"]}; #{Array(run["checks"]).map { check_line(_1) }.join("; ")}"}" }
       evidence += Array(head["outcomes"]).map { "ran: #{_1}" } unless head["orders"]

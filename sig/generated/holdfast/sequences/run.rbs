@@ -1,0 +1,12 @@
+# Generated from lib/holdfast/sequences/run.rb with RBS::Inline
+
+LIB: String
+
+RANK: Hash[String, Integer]
+
+class Object
+  private def hint: (untyped text, Array[untyped] params) -> String
+  private def clean_refusal: (untyped text) -> String?
+  private def scope: (Hash[String, untyped] report) -> [ Integer, Integer, Array[String] ]
+  private def verdict: (Hash[Symbol, untyped] r, Integer limit) -> [ String, String, String ]
+end

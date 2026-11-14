@@ -1,0 +1,542 @@
+# Generated from lib/holdfast/sequences/propose.rb with RBS::Inline
+
+module Propose
+  MAX_ACTIONS: Integer
+
+  FAILURE_NAME: Regexp
+
+  class Draft < Data
+    attr_reader name(): Symbol
+
+    attr_reader params(): Hash[Symbol, untyped]
+
+    attr_reader body(): String
+
+    attr_reader kind(): Symbol
+
+    attr_reader resource(): String?
+
+    attr_reader file(): String?
+
+    def self.new: (Symbol name, Hash[Symbol, untyped] params, String body, Symbol kind, String? resource, String? file) -> instance
+                | (name: Symbol, params: Hash[Symbol, untyped], body: String, kind: Symbol, resource: String?, file: String?) -> instance
+
+    def self.members: () -> [ :name, :params, :body, :kind, :resource, :file ]
+
+    def members: () -> [ :name, :params, :body, :kind, :resource, :file ]
+  end
+
+  class Failure < Data
+    attr_reader name(): Symbol
+
+    attr_reader code(): String
+
+    attr_reader service(): String
+
+    def self.new: (Symbol name, String code, String service) -> instance
+                | (name: Symbol, code: String, service: String) -> instance
+
+    def self.members: () -> [ :name, :code, :service ]
+
+    def members: () -> [ :name, :code, :service ]
+  end
+
+  # One money rule (see money_rules). It sits above `module_function`
+  # because rbs-inline reads that as applying to every method after it in
+  # the file, this class's too.
+  class MoneyRule < Data
+    attr_reader model(): untyped
+
+    attr_reader amount(): String
+
+    attr_reader settled(): Array[String]
+
+    attr_reader assoc(): untyped
+
+    attr_reader child(): untyped
+
+    attr_reader paid(): String
+
+    attr_reader captured(): Array[String]
+
+    attr_reader kind(): String
+
+    def self.new: (untyped model, String amount, Array[String] settled, untyped assoc, untyped child, String paid, Array[String] captured, String kind) -> instance
+                | (model: untyped, amount: String, settled: Array[String], assoc: untyped, child: untyped, paid: String, captured: Array[String], kind: String) -> instance
+
+    def self.members: () -> [ :model, :amount, :settled, :assoc, :child, :paid, :captured, :kind ]
+
+    def members: () -> [ :model, :amount, :settled, :assoc, :child, :paid, :captured, :kind ]
+  end
+
+  # Reopened rather than given as a block: rbs-inline reads no methods
+  # inside a `Data.define` block.
+  class MoneyRule
+    # : () -> String
+    def name: () -> String
+
+    # : () -> Symbol?
+    def owner: () -> Symbol?
+  end
+
+  self.@models: Array[untyped]
+
+  self.@lookup_columns: Hash[[ String, Symbol ], String]
+
+  self.@param_lookups: Hash[Symbol, [ untyped, String ]]
+
+  self.@owned_pools: Hash[Symbol, String]
+
+  self.@drafts: Array[Draft]
+
+  self.@controller_envs: Array[String]
+
+  self.@api_auth: Hash[Symbol, untyped]
+
+  self.@factories: Array[untyped]
+
+  self.@grape_mounts: Hash[untyped, String]
+
+  self.@fakes: Array[[ String, String ]]
+
+  self.@http_services: Array[String]
+
+  @grape_mounts: Hash[untyped, String]
+
+  @fakes: Array[[ String, String ]]
+
+  @http_services: Array[String]
+
+  @models: Array[untyped]
+
+  @lookup_columns: Hash[[ String, Symbol ], String]
+
+  @param_lookups: Hash[Symbol, [ untyped, String ]]
+
+  @owned_pools: Hash[Symbol, String]
+
+  @drafts: Array[Draft]
+
+  @controller_envs: Array[String]
+
+  @api_auth: Hash[Symbol, untyped]
+
+  @factories: Array[untyped]
+
+  self.@failures: Array[Failure]
+
+  @failures: Array[Failure]
+
+  self.@controller_auth: Hash[untyped, { params: Hash[Symbol, String], headers: Hash[String, String] }]
+
+  @controller_auth: Hash[untyped, { params: Hash[Symbol, String], headers: Hash[String, String] }]
+
+  self.@session_sign_in: Hash[Symbol, untyped]?
+
+  @session_sign_in: Hash[Symbol, untyped]?
+
+  self.@app_text: String
+
+  @app_text: String
+
+  self.@static: Hash[String?, Array[String]]
+
+  @static: Hash[String?, Array[String]]
+
+  self.@money_rules: Array[MoneyRule]
+
+  @money_rules: Array[MoneyRule]
+
+  # The model a param or path word names: `loan_id` is a Loan,
+  # `pickup_branch_id` a Branch (by a belongs_to of that name), `request_id`
+  # an InterlibraryRequest (the one model whose name ends in Request).
+  # : (String | Symbol | nil word) -> untyped
+  def self?.model_for: (String | Symbol | nil word) -> untyped
+
+  # : (untyped model) -> Symbol
+  def self?.pool_name: (untyped model) -> Symbol
+
+  # A string param named like an identifying column (a code, a barcode, an
+  # ISBN) reads it from a record the world has: `barcode` from a Copy.
+  # A status or a reason is free text instead: copying one from an unrelated
+  # table draws from an empty pool.
+  IDENTIFIER: Regexp
+
+  # : (String | Symbol key, Array[untyped] models) -> [untyped, String]?
+  def self?.column_source: (String | Symbol key, Array[untyped] models) -> [ untyped, String ]?
+
+  # Guessed draws for an untyped numeric param, marked in the draft.
+  PERCENTS: Array[Integer]
+
+  COUNTS: Hash[Regexp, Array[Integer | String]]
+
+  # : () -> Array[untyped]
+  def self?.models: () -> Array[untyped]
+
+  # What a controller action reads from params: key => [model, attribute],
+  # [:date], [:nested, keys] for `require(:k).permit(...)`, [:upload], or [:value].
+  # : (untyped controller, String | Symbol action) -> Hash[Symbol, Array[untyped]]
+  def self?.controller_params: (untyped controller, String | Symbol action) -> Hash[Symbol, Array[untyped]]
+
+  # Path segments become pool records: `/loans/:id/renew` takes a Loan. In a
+  # nested path the parent is read from the child (`closure.branch_id`), so
+  # the two always match.
+  # : (String path, Hash[Symbol, untyped] params, ?lookups: Hash[Symbol, Array[untyped]]) -> String
+  def self?.path_params: (String path, Hash[Symbol, untyped] params, ?lookups: Hash[Symbol, Array[untyped]]) -> String
+
+  # A controller that finds a path's record by another column
+  # (`Location.find_by!(code: params[:location_id])`) answers 404 to an id.
+  # Keyed by model and param, from every controller.
+  # : () -> Hash[[String, Symbol], String]
+  def self?.lookup_columns: () -> Hash[[ String, Symbol ], String]
+
+  # A body param a controller finds a record by
+  # (`Member.find_by!(email: params.expect(guest: [:host_email])[:host_email])`)
+  # is drawn from that record: free text names no member.
+  # : () -> Hash[Symbol, [untyped, String]]
+  def self?.param_lookups: () -> Hash[Symbol, [ untyped, String ]]
+
+  # How an endpoint file finds a path's record: `Invoice.find(params[:id])`,
+  # `current_member.invoices.find_by!(number: params[:number])`. Grape names
+  # `/guests/:id` after the URL, not the model it finds.
+  # : (String? file) -> Hash[Symbol, Array[untyped]]
+  def self?.endpoint_lookups: (String? file) -> Hash[Symbol, Array[untyped]]
+
+  # A pool of the API caller's own records, named `<table>_of_caller`, with
+  # the expression that finds them.
+  # : (String owner, String assoc, untyped model) -> Symbol?
+  def self?.owned_pool: (String owner, String assoc, untyped model) -> Symbol?
+
+  # : () -> Hash[Symbol, String]
+  def self?.owned_pools: () -> Hash[Symbol, String]
+
+  # The table a pool draws from: `appointments_of_caller` draws appointments.
+  # : (Symbol | String pool) -> String
+  def self?.pool_table: (Symbol | String pool) -> String
+
+  # The values a model's `inclusion: { in: [...] }` accepts for a column of
+  # this name, when every model that validates it accepts the same list.
+  # : (String | Symbol key) -> Array[String | Integer]?
+  def self?.inclusion_values: (String | Symbol key) -> Array[String | Integer]?
+
+  # One body entry for a param: the value expression, with its spec added to
+  # +params+.
+  # : (String | Symbol key, String? type, Hash[Symbol, untyped] params) -> String
+  def self?.value_for: (String | Symbol key, String? type, Hash[Symbol, untyped] params) -> String
+
+  # A form field of a model's column is drawn by the column's type: text in
+  # an integer capacity or a time zone refused every draw. A string the
+  # model refuses as free text (a known time zone, a code format) is drawn
+  # from the factory's value, free text and blank.
+  COLUMN_TYPES: Hash[Symbol, String]
+
+  # : (untyped model, String | Symbol key, Hash[Symbol, untyped] params) -> String
+  def self?.form_value: (untyped model, String | Symbol key, Hash[Symbol, untyped] params) -> String
+
+  # : (untyped model, String key) -> String?
+  def self?.factory_value: (untyped model, String key) -> String?
+
+  # An end time drawn apart from its start broke a duration rule at nearly
+  # every draw; draw it as minutes after the start instead.
+  DURATIONS: Array[Integer]
+
+  # : (Hash[Symbol, untyped] params) -> Hash[Symbol, untyped]
+  def self?.pair_ends!: (Hash[Symbol, untyped] params) -> Hash[Symbol, untyped]
+
+  # : (Hash[Symbol, untyped] params, String call) -> String
+  def self?.block_for: (Hash[Symbol, untyped] params, String call) -> String
+
+  # : () -> Array[Draft]
+  def self?.route_drafts: () -> Array[Draft]
+
+  # : () -> Array[Draft]
+  def self?.api_drafts: () -> Array[Draft]
+
+  # A Grape param with `values: [...]` draws each listed value and one it
+  # refuses; any other param is drawn by its type.
+  # : (String | Symbol key, untyped spec, Hash[Symbol, untyped] params) -> String
+  def self?.grape_value: (String | Symbol key, untyped spec, Hash[Symbol, untyped] params) -> String
+
+  # : () -> Hash[untyped, String]
+  def self?.grape_mounts: () -> Hash[untyped, String]
+
+  # : () -> Array[Draft]
+  def self?.job_drafts: () -> Array[Draft]
+
+  # : () -> Array[Draft]
+  def self?.drafts: () -> Array[Draft]
+
+  # The fakes the specs install, as [client setter, fake class].
+  # : () -> Array[[String, String]]
+  def self?.fakes: () -> Array[[ String, String ]]
+
+  # App modules that talk HTTP themselves (`Net::HTTP.start` inside
+  # `LockerApi.register`) rather than through a `.client` a spec replaces:
+  # the hunt refuses their real calls, so a person writes the fake.
+  # : () -> Array[String]
+  def self?.http_services: () -> Array[String]
+
+  # : (Array[Draft] selected) -> Array[String]
+  def self?.network_note: (Array[Draft] selected) -> Array[String]
+
+  # Methods a fake has and the real client does not, named like a failure:
+  # each becomes a `failure`. One with a required argument needs a person
+  # to say which record it fails for.
+  # : () -> Array[Failure]
+  def self?.failures: () -> Array[Failure]
+
+  # How an API caller signs in: a header looked up as a record's column, or
+  # compared with an ENV value the setup sets.
+  # Each lookup is [header, model, column, literal conditions, bearer]: a
+  # header read straight into find_by, or first into a local (`token =
+  # headers["Authorization"].delete_prefix("Bearer ")`), with the record's
+  # other conditions (`kind: "staff"`). A lookup with conditions or a bearer
+  # prefix gets a record of its own in the setup, with a known token.
+  # : () -> Hash[Symbol, untyped]
+  def self?.api_auth: () -> Hash[Symbol, untyped]
+
+  # : () -> untyped
+  def self?.api_caller_model: () -> untyped
+
+  # The record a bearer or conditioned lookup finds, made in the setup.
+  # : () -> Array[[String, String, String]]
+  def self?.api_own_records: () -> Array[[ String, String, String ]]
+
+  # How a controller lets a caller in, read from its own source and its app
+  # ancestors': HTTP Basic or token auth whose secrets come from ENV or a
+  # literal, a param or a header compared with an ENV value. Each ENV name
+  # is set by every area's setup (controller_envs), so the draft sends the
+  # value the app expects instead of a drawn word it always refuses.
+  ENV_READ: Regexp
+
+  # : (untyped controller) -> { params: Hash[Symbol, String], headers: Hash[String, String] }
+  def self?.controller_auth: (untyped controller) -> { params: Hash[Symbol, String], headers: Hash[String, String] }
+
+  # : () -> Array[String]
+  def self?.controller_envs: () -> Array[String]
+
+  # A desk page that answers "Sign in first" unless the session holds a
+  # staff id: the action that writes that session key (sessions#create) is
+  # the sign-in, its params are drafted like any route's, and a record it
+  # looks up by literal conditions (`kind: "staff"`) is made in the setup.
+  # Every route of a controller whose before_action reads the key signs in
+  # first, through one helper.
+  # : (String text) -> String?
+  def self?.session_key: (String text) -> String?
+
+  # : (untyped controller) -> bool
+  def self?.session_reader?: (untyped controller) -> bool
+
+  # A method's body and the bodies of the controller methods it calls, one
+  # call deep: `require_staff` reads the session through `current_staff`.
+  # : (untyped controller, String | Symbol name, ?Integer depth) -> String
+  def self?.reads_through: (untyped controller, String | Symbol name, ?Integer depth) -> String
+
+  # Desk staff that sign in with a password: the setup makes the record with
+  # a known one, and the sign-in sends it.
+  DESK_PASSWORD: String
+
+  # : () -> Hash[Symbol, untyped]?
+  def self?.session_sign_in: () -> Hash[Symbol, untyped]?
+
+  # : () -> Array[untyped]
+  def self?.factories: () -> Array[untyped]
+
+  # The traits that give a signed-in record a role the app checks
+  # (`trait :supervisor` with `current_staff.supervisor?` in a guard), so the
+  # caller reaches every action instead of only the ones open to all.
+  # : (untyped factory) -> Array[String]
+  def self?.role_traits: (untyped factory) -> Array[String]
+
+  # A factory the setup may call: every association it declares is a bare
+  # name, so the world can hand it records it already made. A factory that
+  # derives one (`copy { association :copy, status: "on_loan" }`) encodes a
+  # state the app should reach through its own actions.
+  # : (untyped factory) -> Array[Symbol]?
+  def self?.seedable: (untyped factory) -> Array[Symbol]?
+
+  # : (untyped decl) -> bool
+  def self?.encodes_state?: (untyped decl) -> bool
+
+  # `branch { association :branch }` and `association :branch` name the
+  # record as a bare `branch` does: the world can hand it one it made. Only
+  # an override or a trait (`association :copy, status: "on_loan"`) encodes
+  # a state.
+  # : (untyped decl) -> bool
+  def self?.plain_association?: (untyped decl) -> bool
+
+  # The world each area starts from: two of each root record, members three,
+  # and each child made from records already there, every pairing once.
+  # : (Array[String] inserted, Array[String] wanted) -> Array[String]
+  def self?.setup_lines: (Array[String] inserted, Array[String] wanted) -> Array[String]
+
+  # The optional parents a factory's own values name (kind "invoice" and
+  # `belongs_to :invoice, optional: true`), which the setup fills.
+  # : (untyped factory) -> Array[Symbol]
+  def self?.named_parents: (untyped factory) -> Array[Symbol]
+
+  # World sizes are drawn per case, so capacity pressure and an empty
+  # waitlist both happen: members 2 to 8, other roots 1 to 3.
+  # : (untyped factory) -> Range[Integer]
+  def self?.root_sizes: (untyped factory) -> Range[Integer]
+
+  # A capacity column (seats, capacity, a limit) drawn 1 to 3 per record.
+  # A capacity column some records must leave blank (seats only on a team
+  # plan) would make every drafted record invalid, so it is drawn only when
+  # the factory's record stays valid with it set.
+  # : (untyped model, untyped factory) -> Array[String]
+  def self?.capacity_args: (untyped model, untyped factory) -> Array[String]
+
+  # The columns a unique index holds alone, partial ones included: a
+  # partial index still forbids two rows its condition selects, and the
+  # factory's defaults usually meet that condition.
+  # : (untyped model) -> Array[String]
+  def self?.conn_unique_columns: (untyped model) -> Array[String]
+
+  # A time column a unique index or an exclusion constraint holds (one start
+  # per member) collides when every record takes the factory's one default,
+  # and a collision in the world is the setup's, not the app's. Each record
+  # gets its own hour instead.
+  # : (untyped model) -> Array[String]
+  def self?.distinct_times: (untyped model) -> Array[String]
+
+  # Tables an action of the area inserts into as its own resource (its name
+  # names the table, as loans_create names loans). Those the setup leaves to
+  # the app. A table inserted only as a side effect of another resource's
+  # action (a kiosk return that requests a transfer) is seeded too: that
+  # action needs a world of its own first, so without seeding, the actions
+  # that draw from the table would never run.
+  # : (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[String]
+  def self?.made_by_own_actions: (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[String]
+
+  # A table an action draws a record or a value from (`practitioner:
+  # :practitioners`, `guest_email_from: :guest_passes`)
+  # is made in the setup even when the area inserts into it: an empty pool
+  # leaves the action never drawn.
+  # : (Array[Draft] selected) -> Array[String]
+  def self?.copied_from: (Array[Draft] selected) -> Array[String]
+
+  # : (Array[Draft] selected) -> Array[String]
+  def self?.pool_tables: (Array[Draft] selected) -> Array[String]
+
+  # What the actions read in the probe (a member's active membership) is
+  # made too, or each check-in is refused for a record the area never has.
+  # : (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[String]
+  def self?.setup_tables: (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[String]
+
+  # : (Array[Draft] selected) -> Hash[Symbol, Hash[Symbol, untyped]]
+  def self?.probe: (Array[Draft] selected) -> Hash[Symbol, Hash[Symbol, untyped]]
+
+  # The table a resource is about: `room_bookings` -> room_bookings,
+  # `api_staff_closures` -> closures; nil for `api_kiosk` or a webhook.
+  # : (String? resource) -> String?
+  def self?.primary: (String? resource) -> String?
+
+  # Constants a source file names, directly or in an app class it names (one
+  # hop): where the probe saw no write or no outside call, this places a job
+  # or an endpoint and says which fakes it can reach.
+  # A route's file is `path#action`: only that method is read.
+  # : (String? file) -> Array[String]
+  def self?.static_constants: (String? file) -> Array[String]
+
+  # : (String? file) -> Hash[String, Integer]
+  def self?.static_tables: (String? file) -> Hash[String, Integer]
+
+  # : (untyped node, Array[String] acc) -> void
+  def self?.walk_constants: (untyped node, Array[String] acc) -> void
+
+  # Areas: resources about the same table form one area (`holds` and
+  # `api_holds`). A resource about no table joins the area whose table it
+  # writes most (or names most, when the probe saw it write nothing). Each
+  # area then gets the actions that make the records its pools take, and is
+  # filled, jobs first, with the actions that write its table, up to
+  # MAX_ACTIONS.
+  # : (Hash[Symbol, untyped] stats) -> Array[[String, Array[Draft], Array[String]]]
+  def self?.areas: (Hash[Symbol, untyped] stats) -> Array[[ String, Array[Draft], Array[String] ]]
+
+  # A desk route and an API endpoint that make or change the same record:
+  # `holds_create` and POST /api/v1/holds, `fines_pay` and POST
+  # /api/v1/fines/:id/pay. Matched by the table both are about and the verb:
+  # the probe often sees one of the two only refused, so writes miss pairs.
+  # : (Draft d) -> Symbol?
+  def self?.door_key: (Draft d) -> Symbol?
+
+  # : (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[[Symbol, Symbol, String]]
+  def self?.twins: (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[[ Symbol, Symbol, String ]]
+
+  # : (String name, Array[Draft] selected, Hash[Symbol, untyped] stats, refusals: Array[String], failures: Array[Failure], ?setup: Array[String], ?note: String?) -> String
+  def self?.definition_source: (String name, Array[Draft] selected, Hash[Symbol, untyped] stats, refusals: Array[String], failures: Array[Failure], ?setup: Array[String], ?note: String?) -> String
+
+  # : (Hash[Symbol, untyped] stats, Array[Draft] selected) -> Array[String]
+  def self?.app_refusals: (Hash[Symbol, untyped] stats, Array[Draft] selected) -> Array[String]
+
+  # : (String name, String source) -> String
+  def self?.spec_file: (String name, String source) -> String
+
+  # : (untyped model) -> Array[String]
+  def self?.statuses: (untyped model) -> Array[String]
+
+  SETTLED: Regexp
+
+  AMOUNT: Regexp
+
+  # Money conserved: a record with an amount and a status, and its payments
+  # (or charges) with an amount and a status. What a settled record says it
+  # took must be what was captured for it, and nothing for any other status.
+  # : () -> Array[MoneyRule]
+  def self?.money_rules: () -> Array[MoneyRule]
+
+  # : () -> Array[String]
+  def self?.money_invariants: () -> Array[String]
+
+  # Factories make each record alone: an open invoice and a succeeded
+  # payment for it break the money rule before any action runs. After the
+  # payments are made, each record with a captured one is marked settled at
+  # the amount captured, so the hunt starts from a world the rule allows.
+  # : (String child_var, untyped child_model, Array[String] made_vars) -> Array[String]
+  def self?.settle_lines: (String child_var, untyped child_model, Array[String] made_vars) -> Array[String]
+
+  KIND_COLUMN: Regexp
+
+  # "" when the payments have one kind; ", kind: record.kind" when both
+  # sides name the kind; ", kind: \"deposit\"" when the amount column names
+  # one (deposit_cents); nil when nothing says which payments count.
+  # : (untyped model, String amount, untyped child) -> String?
+  def self?.kind_filter: (untyped model, String amount, untyped child) -> String?
+
+  # Order kept: a waiting status (waitlisted, queued, pending) that some code
+  # reads in timestamp order. Rows alike in all but when they entered it must
+  # leave it in that order.
+  # : () -> Array[String]
+  def self?.order_invariants: () -> Array[String]
+
+  # One child each: a `has_one` the database does not hold to one row (no
+  # unique index on its key) is held by the code alone, and two requests at
+  # once can leave two, of which the app then reads either.
+  # : () -> Array[String]
+  def self?.one_child_invariants: () -> Array[String]
+
+  # Bounds a column name states: what is left never goes below zero, a
+  # count never passes its max, and a percentage stays within 0..100.
+  # : () -> Array[String]
+  def self?.bound_invariants: () -> Array[String]
+
+  # : () -> Array[String]
+  def self?.drafted_invariants: () -> Array[String]
+
+  # The drafted rules are live; the TODOs ask for the rest. A run with no
+  # invariants still checks errors, 5xx, zones, offsets and doors.
+  # : () -> String
+  def self?.invariants_file: () -> String
+
+  # An invariants.rb that exists keeps the agent's rules; a drafted rule it
+  # does not name yet goes in before its last `end`.
+  # : (untyped path) -> Array[String]
+  def self?.add_drafted: (untyped path) -> Array[String]
+
+  # : (String name, Array[Draft] selected, Hash[Symbol, untyped] stats, Array[String] own) -> String
+  def self?.summarize: (String name, Array[Draft] selected, Hash[Symbol, untyped] stats, Array[String] own) -> String
+
+  # : (Array[String] argv) -> void
+  def self?.main: (Array[String] argv) -> void
+end

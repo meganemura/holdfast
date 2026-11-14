@@ -1,0 +1,66 @@
+# Generated from lib/holdfast/stages/observe.rb with RBS::Inline
+
+module Holdfast
+  module Stages
+    # A behavior diff that starts from inputs, not from changed methods: the
+    # hunt's area definitions (drafted on head) run every ordering of their
+    # actions up to three steps, with fixed draws, once in a checkout of base
+    # and once in a checkout of head, each on its own database. Every step
+    # records how it ended, the rows it wrote by attributes, and the fakes it
+    # touched. Where the two sides differ is behavior that changed, whether
+    # or not a changed method is anywhere near it; an unchanged caller of a
+    # changed value shows up because its own observation moves.
+    #
+    # Only the first differing step of a sequence counts (the steps after it
+    # start from another state). Each difference is matched against the
+    # words of --intent: one that names it is shown to confirm, any other is
+    # unintended.
+    module Observe
+      # The first step of one ordering whose +what+ (outcome, writes or
+      # outside) differs; +base+ and +head+ are what each side recorded.
+      class Diff < Data
+        attr_reader area(): String
+
+        attr_reader action(): String
+
+        attr_reader what(): String
+
+        attr_reader seq(): Array[String]
+
+        attr_reader step(): Integer
+
+        attr_reader base(): untyped
+
+        attr_reader head(): untyped
+
+        attr_reader args(): untyped
+
+        def self.new: (String area, String action, String what, Array[String] seq, Integer step, untyped base, untyped head, untyped args) -> instance
+                    | (area: String, action: String, what: String, seq: Array[String], step: Integer, base: untyped, head: untyped, args: untyped) -> instance
+
+        def self.members: () -> [ :area, :action, :what, :seq, :step, :base, :head, :args ]
+
+        def members: () -> [ :area, :action, :what, :seq, :step, :base, :head, :args ]
+      end
+
+      # : (Change change, Record record, intent: String?, files: Array[String]) -> Array[Verdict]
+      def self.run: (Change change, Record record, intent: String?, files: Array[String]) -> Array[Verdict]
+
+      # What one side observed, { lines:, log: }, or why it did not run, { error:, log: }.
+      # : (Change change, Record record, Hash[String, String] env, String side, String rev, Array[String] areas, String work) -> Hash[Symbol, untyped]
+      def self.observe_side: (Change change, Record record, Hash[String, String] env, String side, String rev, Array[String] areas, String work) -> Hash[Symbol, untyped]
+
+      # : (Array[json] base, Array[json] head) -> Array[Diff]
+      def self.compare: (Array[json] base, Array[json] head) -> Array[Diff]
+
+      # : (String area, String action, String what, Array[Diff] ds, Array[String] words) -> Verdict
+      def self.diff_row: (String area, String action, String what, Array[Diff] ds, Array[String] words) -> Verdict
+
+      # : (untyped) -> String
+      def self.show: (untyped) -> String
+
+      # : (String target, String kind, String reason, Array[String] evidence, String next_step, ?scope: String?) -> Verdict
+      def self.row: (String target, String kind, String reason, Array[String] evidence, String next_step, ?scope: String?) -> Verdict
+    end
+  end
+end

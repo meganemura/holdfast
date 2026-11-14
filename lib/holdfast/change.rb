@@ -1,9 +1,27 @@
+# rbs_inline: enabled
+
 module Holdfast
   # What one run looks at: the base whose behavior must survive, the head
   # (the working tree as it is now, committed or not), and so which mode the
   # harness runs in. The working tree is snapshotted into a commit object
   # through a private index, so the caller's index and stash stay untouched.
-  Change = Data.define(:root, :base, :head, :base_label, :mode, :named) do
+  Change = Data.define(
+    :root, #: String
+    :base, #: String
+    :head, #: String
+    :base_label, #: String
+    :mode, #: String
+    :named #: Array[String]
+  )
+
+  # The paths whose edits change what the app does.
+  CODE = %w[app lib config db Gemfile Gemfile.lock].freeze #: Array[String]
+
+  class Change
+    # @rbs root: String
+    # @rbs base_ref: String
+    # @rbs named: Array[String]
+    # @rbs return: Change
     def self.read(root, base_ref:, named:)
       base_sha = git(root, "merge-base", base_ref, "HEAD")
       head_sha = snapshot(root)
@@ -19,8 +37,7 @@ module Holdfast
       new(root:, base: base_sha, head: head_sha, base_label: base_ref, mode:, named:)
     end
 
-    CODE = %w[app lib config db Gemfile Gemfile.lock].freeze
-
+    #: (String) -> String
     def self.snapshot(root)
       dirty = !git(root, "status", "--porcelain", "--untracked-files=all", "--", ".", ":!.holdfast").empty?
       return git(root, "rev-parse", "HEAD") unless dirty
@@ -39,6 +56,7 @@ module Holdfast
       FileUtils.rm_rf(File.dirname(index)) if index
     end
 
+    #: (String root, *String args, ?env: Hash[String, String]) -> String
     def self.git(root, *args, env: {})
       out, err, status = Open3.capture3(env, "git", *args, chdir: root)
       raise Holdfast::Error, "git #{args.join(" ")}: #{err.lines.first.to_s.strip}" unless status.success?
@@ -46,16 +64,20 @@ module Holdfast
       out.strip
     end
 
+    #: () -> bool
     def changed? = mode == "change"
-    def short(sha) = sha[0, 7]
+    #: (String) -> String
+    def short(sha) = sha[0, 7] #: String
 
     # A dirty tree's snapshot is a commit no `git log` shows; the reader
     # gets the commit it sits on instead.
+    #: () -> String
     def tree_label
       committed = Change.git(root, "rev-parse", "HEAD")
       committed == head ? short(head) : "uncommitted changes on #{short(committed)}"
     end
 
+    #: () -> String
     def header
       case mode
       when "change" then "change: #{base_label} (#{short(base)}) .. working tree (#{tree_label})"

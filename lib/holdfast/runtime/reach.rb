@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 # Loaded through RUBYOPT into each test process jitcatch starts, before the
 # app: it records which lines of the app each test file ran, so a row can say
 # whether a test reached the changed lines or only named the method. It runs
@@ -13,8 +15,9 @@ Coverage.start(lines: true, branches: true, eval: true) unless Coverage.running?
 # Which of the values the change added or removed (HOLDFAST_VALUES, a JSON
 # list) an input drew: a row written with that value. Reads do not count: a
 # scope that selects by a constant puts every member in each query.
-HOLDFAST_WANTED = (JSON.parse(ENV.fetch("HOLDFAST_VALUES", "[]")) rescue []).map(&:to_s)
-HOLDFAST_DREW = []
+holdfast_values = JSON.parse(ENV.fetch("HOLDFAST_VALUES", "[]")) rescue [] #: Array[untyped]
+HOLDFAST_WANTED = holdfast_values.map(&:to_s) #: Array[String]
+HOLDFAST_DREW = [] #: Array[String]
 unless HOLDFAST_WANTED.empty?
   attach = TracePoint.new(:end) do |tp|
     next unless defined?(ActiveSupport::Notifications)
@@ -37,11 +40,15 @@ end
 # What ran since the last take, as { file => lines } and { file => arms },
 # for the app's own files. Each take clears the counts, so the file's total
 # is the union of every take.
-HOLDFAST_ROOT = "#{Dir.pwd}/"
-HOLDFAST_TOTAL = { "hits" => Hash.new { |h, k| h[k] = [] }, "arms" => Hash.new { |h, k| h[k] = [] } }
+HOLDFAST_ROOT = "#{Dir.pwd}/" #: String
+HOLDFAST_TOTAL = { "hits" => Hash.new { |h, k| h[k] = [] }, "arms" => Hash.new { |h, k| h[k] = [] } } #: Hash[String, Hash[String, Array[untyped]]]
+# @rbs!
+#   class Object
+#     private def holdfast_take: () -> Hash[String, Hash[String, Array[untyped]]]
+#   end
 def holdfast_take
-  hits = {}
-  arms = {}
+  hits = {} #: Hash[String, Array[Integer]]
+  arms = {} #: Hash[String, Array[String]]
   Coverage.result(stop: false, clear: true).each do |path, counts|
     next unless path.start_with?(HOLDFAST_ROOT)
 
@@ -63,8 +70,10 @@ end
 # a file's lines cannot say which example drew a new branch. Each example's
 # own lines are kept by the line it is declared on, the line jitcatch
 # reports for it.
-HOLDFAST_EXAMPLES = {}
+HOLDFAST_EXAMPLES = {} #: Hash[Integer?, Hash[String, Hash[String, Array[untyped]]]]
+# @rbs module-self RSpec::Core::Example
 module HoldfastRSpecExample
+  #: (*untyped) -> untyped
   def run(*)
     holdfast_take
     super
@@ -72,7 +81,9 @@ module HoldfastRSpecExample
     HOLDFAST_EXAMPLES[metadata[:line_number]] = holdfast_take
   end
 end
+# @rbs module-self Minitest::Test
 module HoldfastMinitestTest
+  #: (*untyped) -> untyped
   def run(*)
     holdfast_take
     super

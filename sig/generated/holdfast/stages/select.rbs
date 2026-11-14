@@ -1,0 +1,111 @@
+# Generated from lib/holdfast/stages/select.rb with RBS::Inline
+
+module Holdfast
+  # A thing the run checks: a changed method, a reader of a changed value
+  # that is not a plain call site, or a method the caller named before a
+  # change. +tests+ are the existing test files that exercise it, at base.
+  class Target < Data
+    attr_reader name(): String
+
+    attr_reader kind(): String
+
+    attr_reader file(): String
+
+    attr_reader line(): Integer
+
+    attr_reader why(): Array[String]
+
+    attr_reader tests(): Array[String]
+
+    attr_reader source(): String?
+
+    attr_reader reader(): json?
+
+    attr_reader span(): json
+
+    attr_reader reads(): json?
+
+    def self.new: (String name, String kind, String file, Integer line, Array[String] why, Array[String] tests, String? source, json? reader, json span, json? reads) -> instance
+                | (name: String, kind: String, file: String, line: Integer, why: Array[String], tests: Array[String], source: String?, reader: json?, span: json, reads: json?) -> instance
+
+    def self.members: () -> [ :name, :kind, :file, :line, :why, :tests, :source, :reader, :span, :reads ]
+
+    def members: () -> [ :name, :kind, :file, :line, :why, :tests, :source, :reader, :span, :reads ]
+  end
+
+  class Target
+    def self.new: (name: String, kind: String, file: String, line: Integer, why: Array[String], tests: Array[String], source: String?, reader: json?, span: json, ?reads: json?) -> instance
+                | ...
+
+    # : (?reads: json?, **untyped rest) -> void
+    def initialize: (?reads: json?, **untyped rest) -> void
+
+    # : () -> bool
+    def caller?: () -> bool
+
+    # : () -> bool
+    def unchanged?: () -> bool
+
+    # : () -> bool
+    def added?: () -> bool
+
+    # : () -> bool
+    def method?: () -> bool
+  end
+
+  module Stages
+    # Which targets this run checks and which tests belong to each. The
+    # changed methods and their tests come from jitcatch's change brief
+    # (grep, or a jitcatch-coverage-v1 file when the record names one); the
+    # readers of each changed value come from the readers list.
+    module Select
+      class Result < Data
+        attr_reader targets(): Array[Target]
+
+        attr_reader verdicts(): Array[Verdict]
+
+        attr_reader notes(): Array[String]
+
+        def self.new: (Array[Target] targets, Array[Verdict] verdicts, Array[String] notes) -> instance
+                    | (targets: Array[Target], verdicts: Array[Verdict], notes: Array[String]) -> instance
+
+        def self.members: () -> [ :targets, :verdicts, :notes ]
+
+        def members: () -> [ :targets, :verdicts, :notes ]
+      end
+
+      # : (Change, Record) -> Result
+      def self.run: (Change, Record) -> Result
+
+      # : (Change, Record) -> JitCatch::Changes
+      def self.jitcatch: (Change, Record) -> JitCatch::Changes
+
+      # Reading from the first commit's parent makes every method "added", so
+      # the same brief lists each method of head with its tests.
+      # : (Change) -> String
+      def self.empty_parent: (Change) -> String
+
+      # A member a Data.define or attr_reader line adds holds no logic of its
+      # own; the methods that read it are the targets.
+      # : (json) -> bool
+      def self.accessor_only?: (json) -> bool
+
+      # : (String named, json method) -> bool
+      def self.named_match?: (String named, json method) -> bool
+
+      # : (Change, Record) -> Array[String]
+      def self.test_files: (Change, Record) -> Array[String]
+
+      # The readers list names a line, not a test. The tests named after the
+      # reader's file (closures_controller.rb, views/closures/ -> closures_spec)
+      # are the nearest the harness can pick without coverage; a row says so.
+      # : (String file, Array[String] tests) -> Array[String]
+      def self.tests_named_after: (String file, Array[String] tests) -> Array[String]
+
+      # jitcatch's readers: code that reads a changed value without calling it
+      # by name (a scope's SQL, a validation, a default, a page).
+      # : (json brief, Array[String] tests) -> Array[Target]
+      def self.readers: (json brief, Array[String] tests) -> Array[Target]
+    end
+  end
+end

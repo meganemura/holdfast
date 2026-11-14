@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 # Loaded by holdfast's pin tests inside the app's own suite. It calls one
 # method on one input and turns what it saw into plain JSON: the returned
 # value (a record by its attributes, not its class), the error it raised,
@@ -11,14 +13,19 @@ module Holdfast
   module Observe
     # Ids, foreign keys and timestamps differ between two runs of the same
     # input, so they never decide a pin.
-    VOLATILE = /\A(id|created_at|updated_at)\z|_id\z/
-    RECENT = 86_400
+    VOLATILE = /\A(id|created_at|updated_at)\z|_id\z/ #: Regexp
+    RECENT = 86_400 #: Integer
+    NO_ARGS = Array.new.freeze #: Array[untyped]
+    NO_KWARGS = Hash.new.freeze #: Hash[String, untyped]
 
+    # @rbs module-self ActiveRecord::Base
     module Track
+      #: (*untyped) -> untyped
       def _create_record(*)
         super.tap { (Thread.current[:holdfast_writes] ||= []) << [:created, self] if Thread.current[:holdfast_writes] }
       end
 
+      #: (*untyped) -> untyped
       def _update_record(*)
         super.tap { (Thread.current[:holdfast_writes] ||= []) << [:updated, self] if Thread.current[:holdfast_writes] }
       end
@@ -27,17 +34,19 @@ module Holdfast
 
     module_function
 
+    #: (untyped context, Hash[String, untyped] input, String target) -> Hash[String, untyped]?
     def observe(context, input, target)
-      const_name, kind, name = target.match(/\A(.+?)([#.])(\w+[?!=]?)\z/).captures
+      parts = target.match(/\A(.+?)([#.])(\w+[?!=]?)\z/) #: MatchData
+      const_name, kind, name = parts.captures #: [String, String, String]
       const = Object.const_get(const_name)
       within_savepoint do
         run_ruby(context, input["before"]) if input["before"]
         receiver = if input.key?("receiver") then value(context, input["receiver"])
                    elsif kind == "." then const
-                   else const.new(*value(context, input.fetch("new", [])))
+                   else const.new(*value(context, input.fetch("new", NO_ARGS)))
                    end
         args = value(context, Array(input["args"]))
-        kwargs = value(context, input.fetch("kwargs", {})).transform_keys(&:to_sym)
+        kwargs = value(context, input.fetch("kwargs", NO_KWARGS)).transform_keys(&:to_sym) #: Hash[Symbol, untyped]
         Thread.current[:holdfast_writes] = []
         outcome = begin
           { "returns" => project(receiver.__send__(name, *args, **kwargs)) }
@@ -53,6 +62,7 @@ module Holdfast
     end
 
     # Paths whose values differ, as "path: base X, head Y" lines.
+    #: (untyped expected, untyped actual, ?String path) -> Array[String]
     def differences(expected, actual, path = "")
       return [] if expected == actual
 
@@ -65,12 +75,14 @@ module Holdfast
       end
     end
 
+    #: (untyped v) -> String
     def short(v) = (v.nil? ? "(none)" : v.is_a?(String) ? v : JSON.generate(v)).then { _1.size > 90 ? "#{_1[0, 87]}..." : _1 }
 
+    #: [T] () { () -> T } -> T?
     def within_savepoint
       return yield unless defined?(ActiveRecord::Base)
 
-      result = nil
+      result = nil #: T?
       ActiveRecord::Base.transaction(requires_new: true) do
         result = yield
         raise ActiveRecord::Rollback
@@ -78,8 +90,10 @@ module Holdfast
       result
     end
 
+    #: (untyped context, untyped code) -> untyped
     def run_ruby(context, code) = context.instance_eval(code.is_a?(Hash) ? code.fetch("ruby") : code.to_s)
 
+    #: (untyped context, untyped v) -> untyped
     def value(context, v)
       case v
       when Hash then v.keys == ["ruby"] ? run_ruby(context, v) : v.to_h { [_1, value(context, _2)] }
@@ -88,10 +102,11 @@ module Holdfast
       end
     end
 
+    #: (Array[[Symbol, untyped]] writes) -> Array[Hash[String, untyped]]
     def written(writes)
-      seen = {}
+      seen = {} #: Hash[[Symbol, String?, Integer], Hash[String, untyped]]
       writes.each do |how, record|
-        key = [how, record.class.name, record.object_id]
+        key = [how, record.class.name, record.object_id] #: [Symbol, String?, Integer]
         if how == :created
           seen[key] = { "created" => record.class.name, "attributes" => attributes(record) }
         else
@@ -105,8 +120,10 @@ module Holdfast
       seen.values.sort_by { JSON.generate(_1) }
     end
 
+    #: (untyped record) -> Hash[String, untyped]
     def attributes(record) = record.attributes.reject { |k, _| k.match?(VOLATILE) }.sort.to_h.transform_values { project(_1) }
 
+    #: (untyped v, ?Integer depth) -> untyped
     def project(v, depth = 0)
       return v.class.name if depth > 3
 
@@ -131,6 +148,7 @@ module Holdfast
 
     # A time near now comes from the clock, not the input, so it is pinned
     # as recent only.
+    #: (untyped t) -> String
     def time(t) = (Time.now.to_f - t.to_f).abs < RECENT ? "Time (now)" : "Time #{t.utc.iso8601}"
   end
 end

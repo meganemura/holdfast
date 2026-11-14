@@ -1,0 +1,94 @@
+# Generated from lib/holdfast/stages/fill.rb with RBS::Inline
+
+module Holdfast
+  module Stages
+    # Adds the tests that are missing. Each method target gets inputs: the
+    # agent's file under evidence/ when there is one, else a draft (see
+    # Draft); a complete draft runs at once. One rspec process in a checkout
+    # of the pinned side runs every input through Observe and writes a pin
+    # test per input that holds what it returned, raised and wrote, as JSON.
+    # The same process lets branchout run the inputs too, only for its list
+    # of the branch arms no input took.
+    #
+    # Before a change, each input is varied: an Integer, a String or a
+    # boolean argument is redrawn at the method's boundaries while every
+    # argument written as Ruby (a record) stays as given.
+    module Fill
+      # The pins of one target: what each input returned, raised and wrote
+      # (+observed+, one entry per input) and branchout's +report+.
+      class Pins < Data
+        attr_reader target(): Target
+
+        attr_reader origin(): String
+
+        attr_reader dir(): String
+
+        attr_reader rev(): String
+
+        attr_reader report(): json
+
+        attr_reader inputs(): Inputs
+
+        attr_reader observed(): Array[json]
+
+        attr_reader input_errors(): Array[String]
+
+        def self.new: (Target target, String origin, String dir, String rev, json report, Inputs inputs, Array[json] observed, Array[String] input_errors) -> instance
+                    | (target: Target, origin: String, dir: String, rev: String, report: json, inputs: Inputs, observed: Array[json], input_errors: Array[String]) -> instance
+
+        def self.members: () -> [ :target, :origin, :dir, :rev, :report, :inputs, :observed, :input_errors ]
+
+        def members: () -> [ :target, :origin, :dir, :rev, :report, :inputs, :observed, :input_errors ]
+      end
+
+      class Gap < Data
+        attr_reader target(): Target
+
+        attr_reader draft(): Draft::Result?
+
+        attr_reader reason(): String
+
+        def self.new: (Target target, Draft::Result? draft, String reason) -> instance
+                    | (target: Target, draft: Draft::Result?, reason: String) -> instance
+
+        def self.members: () -> [ :target, :draft, :reason ]
+
+        def members: () -> [ :target, :draft, :reason ]
+      end
+
+      COMPARISON: Array[Symbol]
+
+      # One target to pin: its inputs, where they came from, and the entries to run.
+      type job = [ Target, Inputs, String, Array[Inputs::Entry] ]
+
+      # A job and the directory its run writes to.
+      type planned = [ Target, Inputs, String, Array[Inputs::Entry], String ]
+
+      # : (Change change, Record record, Array[Target] targets) -> [Array[Pins], Array[Gap]]
+      def self.run: (Change change, Record record, Array[Target] targets) -> [ Array[Pins], Array[Gap] ]
+
+      # Integer literals a comparison in the target's source names.
+      # : (String?) -> Array[Integer]
+      def self.boundaries: (String?) -> Array[Integer]
+
+      # Each JSON scalar, positional or keyword, is redrawn on its own; every
+      # value written as Ruby (a record, a date) stays exactly as given.
+      # : (Array[Inputs::Entry] entries, Array[Integer] bounds) -> Array[Inputs::Entry]
+      def self.variants: (Array[Inputs::Entry] entries, Array[Integer] bounds) -> Array[Inputs::Entry]
+
+      # : (Change change, Record record, String rev, Array[job] jobs) -> Array[Pins]
+      def self.explore: (Change change, Record record, String rev, Array[job] jobs) -> Array[Pins]
+
+      # : (Record record, Array[planned] planned) -> String
+      def self.spec_source: (Record record, Array[planned] planned) -> String
+
+      # One pin test per input that ran; an input whose own Ruby failed (a
+      # factory, a typo) pins nothing and is listed instead.
+      # : (Record record, Target target, Array[Inputs::Entry] entries, Array[json] observed, String dir) -> void
+      def self.write_pins: (Record record, Target target, Array[Inputs::Entry] entries, Array[json] observed, String dir) -> void
+
+      # : (String) -> String
+      def self.failure_line: (String) -> String
+    end
+  end
+end

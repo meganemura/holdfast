@@ -1,0 +1,191 @@
+# Generated from lib/holdfast/check.rb with RBS::Inline
+
+module Holdfast
+  # `holdfast check`: the agent reads the code and writes what it suspects;
+  # holdfast turns each suspicion into a spec that builds the world with the
+  # app's factories, runs the action (or races two), and checks `expect`.
+  # In a change it runs on base and on head; otherwise once on the tree.
+  # Each suspicion is one row: confirmed (the spec fails, and is kept in
+  # spec/holdfast/<branch>/), refuted (what was observed), or could_not_run (the
+  # exact error, and which part of `given` or `do` it came from).
+  module Check
+    KEYS: Array[String]
+
+    # One `expect` line: its text, the Ruby that checks it, what to show
+    # when it fails, its operands, and the calls and errors it reads.
+    type expectation = Hash[Symbol, untyped]
+
+    # +calls+ are the [class, method] pairs `expect` counts; +shared+ the
+    # locals `do` sets and `expect` reads.
+    class Suspicion < Data
+      attr_reader id(): String
+
+      attr_reader says(): String
+
+      attr_reader given(): Hash[untyped, untyped]
+
+      attr_reader acts(): Array[String]
+
+      attr_reader pause(): String?
+
+      attr_reader expects(): Array[expectation]
+
+      attr_reader calls(): Array[[ String, String ]]
+
+      attr_reader errors(): bool
+
+      attr_reader source(): String
+
+      attr_reader shared(): Array[Symbol]
+
+      def self.new: (String id, String says, Hash[untyped, untyped] given, Array[String] acts, String? pause, Array[expectation] expects, Array[[ String, String ]] calls, bool errors, String source, Array[Symbol] shared) -> instance
+                  | (id: String, says: String, given: Hash[untyped, untyped], acts: Array[String], pause: String?, expects: Array[expectation], calls: Array[[ String, String ]], errors: bool, source: String, shared: Array[Symbol]) -> instance
+
+      def self.members: () -> [ :id, :says, :given, :acts, :pause, :expects, :calls, :errors, :source, :shared ]
+
+      def members: () -> [ :id, :says, :given, :acts, :pause, :expects, :calls, :errors, :source, :shared ]
+    end
+
+    SUPPORT: Array[String]
+
+    SIDE_NUMBERS: Hash[String, String]
+
+    COMPARE: Array[Symbol]
+
+    # The rows, the summary header, and where they were written.
+    # : (String root, files: Array[String], inline: Array[String], ?base: String?, ?here: bool?) -> [Array[Verdict], Array[String], Place]
+    def self.run: (String root, files: Array[String], inline: Array[String], ?base: String?, ?here: bool?) -> [ Array[Verdict], Array[String], Place ]
+
+    # Specs and outputs of one branch, so a branch switch neither mixes kept
+    # specs nor shows another branch's rows. A detached HEAD is keyed by its
+    # commit.
+    class Place < Data
+      attr_reader key(): String
+
+      attr_reader label(): String
+
+      def self.new: (String key, String label) -> instance
+                  | (key: String, label: String) -> instance
+
+      def self.members: () -> [ :key, :label ]
+
+      def members: () -> [ :key, :label ]
+    end
+
+    class Place
+      # : (String) -> Place
+      def self.of: (String) -> Place
+
+      # : () -> String
+      def specs: () -> String
+
+      # : () -> String
+      def out: () -> String
+    end
+
+    # What the rows were checked on, so a run that compared with a base says
+    # which files made it a change, and one that did not says so.
+    # : (Change change, bool? here) -> String
+    def self.scope_line: (Change change, bool? here) -> String
+
+    # A file holds a list of suspicions (or `suspicions:` with one); each
+    # --suspect is one suspicion as a YAML flow mapping.
+    # : (Array[String] files, Array[String] inline) -> Array[Suspicion]
+    def self.parse: (Array[String] files, Array[String] inline) -> Array[Suspicion]
+
+    # `do: x.call(a: 1)` is Ruby, not a YAML mapping: a plain value of says,
+    # do, expect or pause is quoted before YAML reads it. So is an item of a
+    # block list under race or expect, and any other plain value that holds
+    # `: ` (a given written as Ruby), which YAML would refuse.
+    # : (String text) -> String
+    def self.quote_ruby: (String text) -> String
+
+    # The items of a flow list, split at the commas outside brackets and
+    # quotes.
+    # : (String text) -> Array[String]
+    def self.flow_items: (String text) -> Array[String]
+
+    # : (untyped h, Integer i, String from) -> Suspicion
+    def self.suspicion: (untyped h, Integer i, String from) -> Suspicion
+
+    # A line that is not Ruby fails here, before any database work, naming
+    # the line, instead of as a spec rspec cannot load.
+    # : (String code, String where) -> void
+    def self.ruby!: (String code, String where) -> void
+
+    IVAR_NODES: Hash[Symbol, Array[Class]]
+
+    # : (String code, Symbol kind) -> Array[Symbol]
+    def self.ivars: (String code, Symbol kind) -> Array[Symbol]
+
+    # The few lines an agent writes most often, and Ruby for the rest. Each
+    # operand of a top-level `&&` or `||` may be a short form too, so
+    # `no error && fine.paid?` is two checks, not a call to `no`.
+    # : (String text) -> expectation
+    def self.expectation: (String text) -> expectation
+
+    # : (String t) -> expectation?
+    def self.short_form: (String t) -> expectation?
+
+    # : (String t) -> expectation
+    def self.ruby_form: (String t) -> expectation
+
+    # The operands of the `&&` and `||` outside brackets and quotes, and the
+    # operators between them. Text, not Prism: a short form is not Ruby.
+    # : (String text) -> [Array[String], Array[String]]
+    def self.logic_split: (String text) -> [ Array[String], Array[String] ]
+
+    # : (String ruby) -> untyped
+    def self.top_node: (String ruby) -> untyped
+
+    # `a && b && c` is three operands, so a failed line can name the one
+    # that failed; a single comparison has none.
+    # : (String ruby) -> Array[String]
+    def self.operands: (String ruby) -> Array[String]
+
+    # For `a.b == c` show what `a.b` was.
+    # : (String ruby) -> String
+    def self.observed_side: (String ruby) -> String
+
+    RELATIVE: Regexp
+
+    UNITS: Hash[String, String]
+
+    # : (untyped v, Array[String] names) -> String
+    def self.value: (untyped v, Array[String] names) -> String
+
+    # : (Hash[untyped, untyped] given) -> Array[String]
+    def self.given_lines: (Hash[untyped, untyped] given) -> Array[String]
+
+    # : (Suspicion s, Record record) -> String
+    def self.spec: (Suspicion s, Record record) -> String
+
+    # : (String root, Record record, String side, String? rev, Array[Suspicion] suspicions, Place place) -> json
+    def self.run_side: (String root, Record record, String side, String? rev, Array[Suspicion] suspicions, Place place) -> json
+
+    # A side's database is set up again only when its schema file changed.
+    # : (String tree) -> String
+    def self.schema_digest: (String tree) -> String
+
+    # : (String root, String side) -> String
+    def self.schema_mark_path: (String root, String side) -> String
+
+    # : (String root, String tree, String side) -> bool
+    def self.schema_current?: (String root, String tree, String side) -> bool
+
+    # : (String root, String tree, String side) -> Integer
+    def self.schema_mark: (String root, String tree, String side) -> Integer
+
+    # : (json run, Suspicion s) -> json
+    def self.side_result: (json run, Suspicion s) -> json
+
+    # : (json r) -> String
+    def self.describe: (json r) -> String
+
+    # : (json c) -> String
+    def self.check_line: (json c) -> String
+
+    # : (Suspicion s, Hash[String, untyped] reports, Change change, Hash[String, String?] sides, Record record, Place place) -> Verdict
+    def self.row: (Suspicion s, Hash[String, untyped] reports, Change change, Hash[String, String?] sides, Record record, Place place) -> Verdict
+  end
+end

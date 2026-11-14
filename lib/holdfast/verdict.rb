@@ -1,10 +1,34 @@
+# rbs_inline: enabled
+
 module Holdfast
   # The one row every stage returns: one per changed method, per changed
   # value, or per hunted area. +evidence+ is the list of what was checked
   # under it (tests that reached the changed lines, pins, readers), so a row
   # never reads as more than it covered. +next_step+ is the one thing to do
   # after reading it; every row has one.
-  Verdict = Data.define(:target, :stage, :kind, :reason, :scope, :evidence, :repro, :next_step, :shown) do
+  Verdict = Data.define(
+    :target, #: String
+    :stage, #: String
+    :kind, #: String
+    :reason, #: String
+    :scope, #: String?
+    :evidence, #: Array[String]
+    :repro, #: String?
+    :next_step, #: String
+    :shown #: bool
+  )
+
+  class Verdict
+    # @rbs target: String
+    # @rbs stage: String
+    # @rbs kind: String
+    # @rbs reason: String
+    # @rbs next_step: String
+    # @rbs scope: String?
+    # @rbs evidence: Array[String]?
+    # @rbs repro: String?
+    # @rbs shown: bool
+    # @rbs return: Verdict
     def self.of(target:, stage:, kind:, reason:, next_step:, scope: nil, evidence: nil, repro: nil, shown: true)
       raise ArgumentError, "unknown verdict kind #{kind}" unless KINDS.include?(kind)
       raise ArgumentError, "a verdict needs a next step" if next_step.to_s.empty?
@@ -12,6 +36,7 @@ module Holdfast
       new(target:, stage:, kind:, reason:, scope: scope.to_s.empty? ? nil : scope, evidence: Array(evidence), repro:, next_step:, shown:)
     end
 
+    #: () -> String
     def to_json_line
       JSON.generate({ "target" => target, "stage" => stage, "kind" => kind, "reason" => reason, "scope" => scope,
                       "evidence" => (evidence unless evidence.empty?), "repro" => repro, "next" => next_step, "shown" => (false unless shown) }.compact)
@@ -19,7 +44,7 @@ module Holdfast
   end
 
   # The order a person reads in: what needs a decision first.
-  KINDS = %w[confirmed unintended_change bug_suspect could_not_run unchecked intended_change refuted clean].freeze
+  KINDS = %w[confirmed unintended_change bug_suspect could_not_run unchecked intended_change refuted clean].freeze #: Array[String]
 
   # One screen: a row that needs nothing is one line; a row that needs a
   # decision shows its evidence, its repro and its next step. Everything
@@ -34,10 +59,15 @@ module Holdfast
       "intended_change" => "Changed as intended (confirm against the intent)",
       "refuted" => "Refuted (what was observed)",
       "clean" => "Compared on both sides and unchanged"
-    }.freeze
-    SHOWN = { "confirmed" => 8, "could_not_run" => 3, "refuted" => 3, "unintended_change" => 4, "bug_suspect" => 4, "unchecked" => 2, "intended_change" => 0, "clean" => 0 }.freeze
-    QUIET = %w[intended_change refuted clean].freeze
+    }.freeze #: Hash[String, String]
+    SHOWN = { "confirmed" => 8, "could_not_run" => 3, "refuted" => 3, "unintended_change" => 4, "bug_suspect" => 4, "unchecked" => 2, "intended_change" => 0, "clean" => 0 }.freeze #: Hash[String, Integer]
+    QUIET = %w[intended_change refuted clean].freeze #: Array[String]
 
+    # @rbs header: Array[String]
+    # @rbs verdicts: Array[Verdict]
+    # @rbs mode: String
+    # @rbs rows: String
+    # @rbs return: String
     def self.markdown(header, verdicts, mode: "change", rows: "verdicts.jsonl")
       shown_kinds = verdicts.any? { _1.stage == "check" } ? %w[confirmed could_not_run refuted] : KINDS - %w[confirmed could_not_run refuted]
       counts = (shown_kinds | verdicts.map(&:kind).uniq).map { |kind| "#{kind}=#{verdicts.count { _1.kind == kind }}" }.join(" ")

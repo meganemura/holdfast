@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 # Drafts sequence definitions for a Rails app: an action
 # per write route, Grape endpoint and job, a pool per model they take, a world
 # built from the factories, the fakes the specs install, and each fake's
@@ -15,17 +17,88 @@ require_relative "sequences"
 require "prism"
 
 module Propose
-  MAX_ACTIONS = 10
-  FAILURE_NAME = /fail|time_?out|declin|refus|reject|unavailable|error/i
+  MAX_ACTIONS = 10 #: Integer
+  FAILURE_NAME = /fail|time_?out|declin|refus|reject|unavailable|error/i #: Regexp
 
-  Draft = Data.define(:name, :params, :body, :kind, :resource, :file)
-  Failure = Data.define(:name, :code, :service)
+  Draft = Data.define(
+    :name, #: Symbol
+    :params, #: Hash[Symbol, untyped]
+    :body, #: String
+    :kind, #: Symbol
+    :resource, #: String?
+    :file #: String?
+  )
+  Failure = Data.define(
+    :name, #: Symbol
+    :code, #: String
+    :service #: String
+  )
+  # One money rule (see money_rules). It sits above `module_function`
+  # because rbs-inline reads that as applying to every method after it in
+  # the file, this class's too.
+  MoneyRule = Data.define(
+    :model, #: untyped
+    :amount, #: String
+    :settled, #: Array[String]
+    :assoc, #: untyped
+    :child, #: untyped
+    :paid, #: String
+    :captured, #: Array[String]
+    :kind #: String
+  )
+  # Reopened rather than given as a block: rbs-inline reads no methods
+  # inside a `Data.define` block.
+  class MoneyRule
+    #: () -> String
+    def name = "#{model.model_name.singular}_#{amount}_matches_#{assoc.name}_captured"
+    #: () -> Symbol?
+    def owner = child.reflect_on_all_associations(:belongs_to).find { it.foreign_key.to_s == assoc.foreign_key.to_s }&.name
+  end
+
+  # The models, routes, factories and source files this reads are the app's,
+  # so their values are untyped.
+  # @rbs!
+  #   self.@models: Array[untyped]
+  #   self.@lookup_columns: Hash[[String, Symbol], String]
+  #   self.@param_lookups: Hash[Symbol, [untyped, String]]
+  #   self.@owned_pools: Hash[Symbol, String]
+  #   self.@drafts: Array[Draft]
+  #   self.@controller_envs: Array[String]
+  #   self.@api_auth: Hash[Symbol, untyped]
+  #   self.@factories: Array[untyped]
+  #   self.@grape_mounts: Hash[untyped, String]
+  #   self.@fakes: Array[[String, String]]
+  #   self.@http_services: Array[String]
+  #   @grape_mounts: Hash[untyped, String]
+  #   @fakes: Array[[String, String]]
+  #   @http_services: Array[String]
+  #   @models: Array[untyped]
+  #   @lookup_columns: Hash[[String, Symbol], String]
+  #   @param_lookups: Hash[Symbol, [untyped, String]]
+  #   @owned_pools: Hash[Symbol, String]
+  #   @drafts: Array[Draft]
+  #   @controller_envs: Array[String]
+  #   @api_auth: Hash[Symbol, untyped]
+  #   @factories: Array[untyped]
+  #   self.@failures: Array[Failure]
+  #   @failures: Array[Failure]
+  #   self.@controller_auth: Hash[untyped, { params: Hash[Symbol, String], headers: Hash[String, String] }]
+  #   @controller_auth: Hash[untyped, { params: Hash[Symbol, String], headers: Hash[String, String] }]
+  #   self.@session_sign_in: Hash[Symbol, untyped]?
+  #   @session_sign_in: Hash[Symbol, untyped]?
+  #   self.@app_text: String
+  #   @app_text: String
+  #   self.@static: Hash[String?, Array[String]]
+  #   @static: Hash[String?, Array[String]]
+  #   self.@money_rules: Array[MoneyRule]
+  #   @money_rules: Array[MoneyRule]
 
   module_function
 
   # The model a param or path word names: `loan_id` is a Loan,
   # `pickup_branch_id` a Branch (by a belongs_to of that name), `request_id`
   # an InterlibraryRequest (the one model whose name ends in Request).
+  #: (String | Symbol | nil word) -> untyped
   def model_for(word)
     stem = word.to_s.sub(/_id\z/, "")
     found = stem.classify.safe_constantize
@@ -38,13 +111,15 @@ module Propose
     suffix.first if suffix.one?
   end
 
+  #: (untyped model) -> Symbol
   def pool_name(model) = model.model_name.plural.to_sym
 
   # A string param named like an identifying column (a code, a barcode, an
   # ISBN) reads it from a record the world has: `barcode` from a Copy.
   # A status or a reason is free text instead: copying one from an unrelated
   # table draws from an empty pool.
-  IDENTIFIER = /code|barcode|isbn|token|email|ref\z|reference\z/
+  IDENTIFIER = /code|barcode|isbn|token|email|ref\z|reference\z/ #: Regexp
+  #: (String | Symbol key, Array[untyped] models) -> [untyped, String]?
   def column_source(key, models)
     # A param named like a record (`branch`, `pickup_branch`) sends its identifying column.
     if (model = model_for(key)) && (column = model.columns.find { it.type == :string && it.name.match?(IDENTIFIER) })
@@ -62,22 +137,25 @@ module Propose
   end
 
   # Guessed draws for an untyped numeric param, marked in the draft.
-  PERCENTS = [0, 50, 100, 101, -1].freeze
+  PERCENTS = [0, 50, 100, 101, -1].freeze #: Array[Integer]
   COUNTS = { /minutes|duration/ => [0, 15, 30, 60, 120, 240, 600], /size|count|attendees|seats|quantity|number|days/ => [0, 1, 2, 4, 12, -1],
-             /amount|price|total|fee|cost/ => ["0", "1", "12.50", "100", "-5", "0.01"] }.freeze
+             /amount|price|total|fee|cost/ => ["0", "1", "12.50", "100", "-5", "0.01"] }.freeze #: Hash[Regexp, Array[Integer | String]]
 
+  #: () -> Array[untyped]
   def models
     @models ||= ActiveRecord::Base.descendants.reject { it.abstract_class? || it.name.nil? }.select(&:table_exists?)
   end
 
   # What a controller action reads from params: key => [model, attribute],
   # [:date], [:nested, keys] for `require(:k).permit(...)`, [:upload], or [:value].
+  #: (untyped controller, String | Symbol action) -> Hash[Symbol, Array[untyped]]
   def controller_params(controller, action)
     file = controller.instance_method(action).source_location&.first or return {}
-    found = {}
+    found = {} #: Hash[Symbol, Array[untyped]]
     nest = lambda do |key, attrs|
-      found[key] = [:nested, ((found[key]&.first == :nested ? found[key].last : []) + attrs).uniq]
-    end
+      found[key] = [:nested, ((found[key]&.first == :nested ? found[key].last : Array.new) + attrs).uniq]
+    end #: ^(Symbol, Array[Symbol]) -> untyped
+    # Prism nodes of any kind pass through, so the walk reads them untyped.
     walk = lambda do |node, stack|
       # Rails 8's `params.expect(membership: [:plan_id])` and
       # `params.dig(:membership, :starts_on)` read a nested form too.
@@ -91,13 +169,13 @@ module Propose
             (keys = Array(node.arguments&.arguments)).size == 2 && keys.all?(Prism::SymbolNode)
         nest.(keys.first.unescaped.to_sym, [keys.last.unescaped.to_sym])
       elsif node.is_a?(Prism::CallNode) && node.receiver.is_a?(Prism::CallNode) && node.receiver.name == :params &&
-         %i[require [] fetch].include?(node.name) && node.arguments&.arguments&.first.is_a?(Prism::SymbolNode)
-        key = node.arguments.arguments.first.unescaped.to_sym
+         %i[require [] fetch].include?(node.name) && (first = node.arguments&.arguments&.first).is_a?(Prism::SymbolNode)
+        key = first.unescaped.to_sym
         at = stack.rindex { it.is_a?(Prism::CallNode) && %i[find find_by find_by!].include?(it.name) && it.receiver.is_a?(Prism::ConstantReadNode) }
-        pair = at && stack[at..].reverse.find { it.is_a?(Prism::AssocNode) }
+        pair = at && stack.drop(at).reverse.find { it.is_a?(Prism::AssocNode) }
         model = at && stack[at].receiver.name.to_s.safe_constantize
         dated = stack.last.is_a?(Prism::CallNode) && %i[to_date to_time].include?(stack.last.name)
-        outer = stack.last if stack.last.is_a?(Prism::CallNode) && stack.last.receiver.equal?(node)
+        outer = (stack.last if stack.last.is_a?(Prism::CallNode) && stack.last.receiver.equal?(node)) #: untyped
         # `params.require(:tickets).map { it.permit(:kind, ...) }` is a list of forms.
         each_permit = if %i[map each filter_map flat_map].include?(outer&.name) && outer.block
                         found_permit = nil
@@ -107,7 +185,7 @@ module Propose
                           todo.concat(n.compact_child_nodes)
                         end
                         found_permit
-                      end
+                      end #: untyped
         found[key] ||= if outer&.name == :permit
                          [:nested, outer.arguments.arguments.grep(Prism::SymbolNode).map { it.unescaped.to_sym }]
                        elsif each_permit
@@ -120,15 +198,15 @@ module Propose
                        end
       end
       node.compact_child_nodes.each { walk.(it, stack + [node]) }
-    end
+    end #: ^(untyped, Array[untyped]) -> untyped
     tree = Prism.parse_file(file).value
     defn = tree.breadth_first_search { it.is_a?(Prism::DefNode) && it.name == action.to_sym }
     defn&.then { walk.(it, []) }
     # The usual `member_params` helper holds the form's keys, so a method of
     # the same file the action calls with no receiver is read too.
     if defn
-      called = []
-      stack = [defn]
+      called = [] #: Array[Symbol]
+      stack = [defn] #: Array[untyped]
       while (n = stack.pop)
         called << n.name if n.is_a?(Prism::CallNode) && n.receiver.nil? && n.arguments.nil?
         stack.concat(n.compact_child_nodes)
@@ -141,18 +219,18 @@ module Propose
     end
     # `file = params[:file]` and then `file.read`: the local is the upload.
     if defn
-      locals = {}
-      seen = []
-      stack = [defn]
+      locals = {} #: Hash[Symbol, Symbol]
+      seen = [] #: Array[untyped]
+      stack = [defn] #: Array[untyped]
       while (n = stack.pop)
         seen << n
         stack.concat(n.compact_child_nodes)
       end
       seen.grep(Prism::LocalVariableWriteNode).each do |w|
         v = w.value
-        next unless v.is_a?(Prism::CallNode) && v.receiver.is_a?(Prism::CallNode) && v.receiver.name == :params && v.arguments&.arguments&.first.is_a?(Prism::SymbolNode)
+        next unless v.is_a?(Prism::CallNode) && v.receiver.is_a?(Prism::CallNode) && v.receiver.name == :params && (first = v.arguments&.arguments&.first).is_a?(Prism::SymbolNode)
 
-        locals[w.name] = v.arguments.arguments.first.unescaped.to_sym
+        locals[w.name] = first.unescaped.to_sym
       end
       seen.grep(Prism::CallNode).each do |c|
         next unless %i[read original_filename path].include?(c.name) && c.receiver.is_a?(Prism::LocalVariableReadNode) && (key = locals[c.receiver.name])
@@ -166,6 +244,7 @@ module Propose
   # Path segments become pool records: `/loans/:id/renew` takes a Loan. In a
   # nested path the parent is read from the child (`closure.branch_id`), so
   # the two always match.
+  #: (String path, Hash[Symbol, untyped] params, ?lookups: Hash[Symbol, Array[untyped]]) -> String
   def path_params(path, params, lookups: {})
     resource = path.split("/").reject { it.empty? || it.start_with?(":") }
     segments = path.scan(/:(\w+)/).flatten.map do |key|
@@ -173,7 +252,8 @@ module Propose
       [key, key == :id ? model_for(resource.reverse.find { model_for(it) }) : model_for(key)]
     end
     path.gsub(/:(\w+)/) do
-      key = $1.to_sym
+      word = $1 #: String
+      key = word.to_sym
       if (choices = lookups[key])
         # One file finds `:id` as a patient under /patients and as an
         # appointment under /appointments: the segment before the param says which.
@@ -183,7 +263,8 @@ module Propose
         params[var.to_sym] = found[2] || pool_name(found[0])
         next "\#{#{var}.#{found[1]}}"
       end
-      model = segments.assoc(key)[1]
+      segment = segments.assoc(key) #: [Symbol, untyped]
+      model = segment[1]
       child = segments.map(&:last).compact.find do |m|
         m != model && model && m.reflect_on_all_associations(:belongs_to).any? { !it.polymorphic? && it.klass == model }
       end
@@ -208,17 +289,21 @@ module Propose
   # A controller that finds a path's record by another column
   # (`Location.find_by!(code: params[:location_id])`) answers 404 to an id.
   # Keyed by model and param, from every controller.
+  #: () -> Hash[[String, Symbol], String]
   def lookup_columns
-    @lookup_columns ||= Dir[Rails.root.join("app/controllers/**/*.rb")].each_with_object({}) do |file, found|
+    table = {} #: Hash[[String, Symbol], String]
+    @lookup_columns ||= Dir[Rails.root.join("app/controllers/**/*.rb")].each_with_object(table) do |file, found|
       Prism.parse_file(file).value.breadth_first_search do |c|
+        # @type var c: untyped
         next false unless c.is_a?(Prism::CallNode) && %i[find_by find_by!].include?(c.name) && c.receiver.is_a?(Prism::ConstantReadNode)
 
-        c.arguments&.arguments&.grep(Prism::KeywordHashNode)&.flat_map(&:elements)&.each do |pair|
+        hashes = c.arguments&.arguments&.grep(Prism::KeywordHashNode) #: Array[untyped]?
+        hashes&.flat_map(&:elements)&.each do |pair|
           v = pair.value
           next unless pair.key.is_a?(Prism::SymbolNode) && v.is_a?(Prism::CallNode) && v.name == :[] &&
-                      v.receiver.is_a?(Prism::CallNode) && v.receiver.name == :params && v.arguments&.arguments&.first.is_a?(Prism::SymbolNode)
+                      v.receiver.is_a?(Prism::CallNode) && v.receiver.name == :params && (first = v.arguments&.arguments&.first).is_a?(Prism::SymbolNode)
 
-          found[[c.receiver.name.to_s, v.arguments.arguments.first.unescaped.to_sym]] ||= pair.key.unescaped
+          found[[c.receiver.name.to_s, first.unescaped.to_sym]] ||= pair.key.unescaped
         end
         false
       end
@@ -228,9 +313,12 @@ module Propose
   # A body param a controller finds a record by
   # (`Member.find_by!(email: params.expect(guest: [:host_email])[:host_email])`)
   # is drawn from that record: free text names no member.
+  #: () -> Hash[Symbol, [untyped, String]]
   def param_lookups
-    @param_lookups ||= Dir[Rails.root.join("app/{controllers,api}/**/*.rb")].each_with_object({}) do |file, found|
+    table = {} #: Hash[Symbol, [untyped, String]]
+    @param_lookups ||= Dir[Rails.root.join("app/{controllers,api}/**/*.rb")].each_with_object(table) do |file, found|
       Prism.parse_file(file).value.breadth_first_search do |c|
+        # @type var c: untyped
         next false unless c.is_a?(Prism::CallNode) && %i[find_by find_by!].include?(c.name)
 
         # A scope may stand between: `Service.online.find_by!(code: ...)`.
@@ -238,7 +326,8 @@ module Propose
         root = root.receiver while root.is_a?(Prism::CallNode) && root.receiver
         next false unless root.is_a?(Prism::ConstantReadNode)
 
-        c.arguments&.arguments&.grep(Prism::KeywordHashNode)&.flat_map(&:elements)&.each do |pair|
+        hashes = c.arguments&.arguments&.grep(Prism::KeywordHashNode) #: Array[untyped]?
+        hashes&.flat_map(&:elements)&.each do |pair|
           next unless pair.key.is_a?(Prism::SymbolNode) && pair.value.slice.include?("params")
 
           key = pair.value.slice.scan(/\[:(\w+)\]/).flatten.last or next
@@ -253,25 +342,28 @@ module Propose
   # How an endpoint file finds a path's record: `Invoice.find(params[:id])`,
   # `current_member.invoices.find_by!(number: params[:number])`. Grape names
   # `/guests/:id` after the URL, not the model it finds.
+  #: (String? file) -> Hash[Symbol, Array[untyped]]
   def endpoint_lookups(file)
     return {} unless file && File.file?(file)
 
     text = File.read(file)
-    found = []
+    found = [] #: Array[[String, String, String, String?]]
     text.scan(/(?:(current_\w+)\.)?([A-Za-z_]\w*)(?:\([^)]*\))?(?:\.\w+)*?(?:\.where\([^)]*\))?\.find_by!?\((\w+):\s*params\[:(\w+)\]\)/) { |owner, word, col, key| found << [key, word, col, owner] }
     text.scan(/(?:(current_\w+)\.)?([A-Za-z_]\w*)\.find\(params\[:(\w+)\]\)/) { |owner, word, key| found << [key, word, "id", owner] }
     found.filter_map do |key, word, col, owner|
-      model = word.match?(/\A[A-Z]/) ? word.safe_constantize : model_for(word.singularize)
+      model = word.match?(/\A[A-Z]/) ? word.safe_constantize : model_for(word.singularize) #: untyped
       next unless model.is_a?(Class) && model < ActiveRecord::Base && model.column_names.include?(col)
 
       # `current_patient.appointments.find(params[:id])` finds only the
       # caller's own records: any other answers 404.
-      [key.to_sym, [model, col, (owned_pool(owner, word, model) if owner)]]
+      row = [key.to_sym, [model, col, (owned_pool(owner, word, model) if owner)]] #: [Symbol, Array[untyped]]
+      row
     end.group_by(&:first).transform_values { it.map(&:last).uniq }
   end
 
   # A pool of the API caller's own records, named `<table>_of_caller`, with
   # the expression that finds them.
+  #: (String owner, String assoc, untyped model) -> Symbol?
   def owned_pool(owner, assoc, model)
     caller = model_for(owner.delete_prefix("current_")) or return
     made = api_own_records.find { |_, line, _| line.start_with?("create(:#{factories.find { it.build_class == caller }&.name},") } or return
@@ -281,13 +373,16 @@ module Propose
     name
   end
 
+  #: () -> Hash[Symbol, String]
   def owned_pools = @owned_pools ||= {}
 
   # The table a pool draws from: `appointments_of_caller` draws appointments.
+  #: (Symbol | String pool) -> String
   def pool_table(pool) = pool.to_s.delete_suffix("_of_caller")
 
   # The values a model's `inclusion: { in: [...] }` accepts for a column of
   # this name, when every model that validates it accepts the same list.
+  #: (String | Symbol key) -> Array[String | Integer]?
   def inclusion_values(key)
     lists = models.filter_map do |m|
       v = m.validators_on(key.to_sym).grep(ActiveModel::Validations::InclusionValidator).first or next
@@ -300,6 +395,7 @@ module Propose
 
   # One body entry for a param: the value expression, with its spec added to
   # +params+.
+  #: (String | Symbol key, String? type, Hash[Symbol, untyped] params) -> String
   def value_for(key, type, params)
     key = key.to_s
     if !key.end_with?("_id") && (found = param_lookups[key.to_sym]) && found[1] != key
@@ -360,7 +456,8 @@ module Propose
   # an integer capacity or a time zone refused every draw. A string the
   # model refuses as free text (a known time zone, a code format) is drawn
   # from the factory's value, free text and blank.
-  COLUMN_TYPES = { integer: "Integer", boolean: "Boolean", date: "Date", datetime: "Time", decimal: "BigDecimal", float: "Float" }.freeze
+  COLUMN_TYPES = { integer: "Integer", boolean: "Boolean", date: "Date", datetime: "Time", decimal: "BigDecimal", float: "Float" }.freeze #: Hash[Symbol, String]
+  #: (untyped model, String | Symbol key, Hash[Symbol, untyped] params) -> String
   def form_value(model, key, params)
     col = model&.columns_hash&.[](key.to_s)
     # A unique column drawn from records already there collides every time:
@@ -389,6 +486,7 @@ module Propose
     "#{key}:"
   end
 
+  #: (untyped model, String key) -> String?
   def factory_value(model, key)
     factory = factories.find { it.build_class == model } or return nil
     record = FactoryBot.build(factory.name)
@@ -404,7 +502,8 @@ module Propose
 
   # An end time drawn apart from its start broke a duration rule at nearly
   # every draw; draw it as minutes after the start instead.
-  DURATIONS = [30, 60, 90, 120, 180, 15, 0, -30, 240, 600].freeze
+  DURATIONS = [30, 60, 90, 120, 180, 15, 0, -30, 240, 600].freeze #: Array[Integer]
+  #: (Hash[Symbol, untyped] params) -> Hash[Symbol, untyped]
   def pair_ends!(params)
     params.keys.each do |key|
       stem = key.to_s[/\A(.*?)(ends?|finish(?:es)?|until|to)_at\z/, 1] or next
@@ -414,10 +513,12 @@ module Propose
     params
   end
 
+  #: (Hash[Symbol, untyped] params, String call) -> String
   def block_for(params, call)
     params.empty? ? "{ #{call} }" : "{ |#{params.keys.map { "#{it}:" }.join(", ")}| #{call} }"
   end
 
+  #: () -> Array[Draft]
   def route_drafts
     Rails.application.routes.routes.filter_map do |route|
       verb = route.verb
@@ -426,7 +527,7 @@ module Propose
 
       controller = "#{route.defaults[:controller].camelize}Controller".safe_constantize or next
       action = route.defaults[:action]
-      params = {}
+      params = {} #: Hash[Symbol, untyped]
       url = path_params(path, params)
       segments = path.scan(/:(\w+)/).flatten.map(&:to_sym)
       auth = controller_auth(controller)
@@ -445,25 +546,28 @@ module Propose
           params[key] = :text
           %(#{key}: Rack::Test::UploadedFile.new(StringIO.new(#{key}.to_s), "text/plain", original_filename: "#{key}.txt"))
         elsif kind.is_a?(Class)
-          var = kind.model_name.singular.to_sym
+          model = kind #: untyped
+          var = model.model_name.singular.to_sym
           var = key.to_s.delete_suffix("_id").to_sym if params.key?(var)
-          params[var] = pool_name(kind)
+          params[var] = pool_name(model)
           "#{key}: #{var}.#{attribute}"
         else
           value_for(key, kind == :date ? "Date" : nil, params)
         end
       end
       # The sign-in action itself sends the known credentials.
-      body = session_sign_in[:body] if session_sign_in && route.defaults[:controller] == session_sign_in[:controller] && action == session_sign_in[:action]
+      sign_in = session_sign_in
+      body = sign_in[:body] if sign_in && route.defaults[:controller] == sign_in[:controller] && action == sign_in[:action]
       pair_ends!(params)
       headers = auth[:headers].map { |h, expr| "#{h.inspect} => #{expr}" }
       call = %(http.#{verb.downcase} "#{url}"#{", params: { #{body.join(", ")} }" unless body.empty?}#{", headers: { #{headers.join(", ")} }" unless headers.empty?})
-      call = "desk_sign_in; #{call}" if session_sign_in && (session_reader?(controller) && route.defaults[:controller] != session_sign_in[:controller])
+      call = "desk_sign_in; #{call}" if sign_in && (session_reader?(controller) && route.defaults[:controller] != sign_in[:controller])
       Draft.new(name: :"#{route.defaults[:controller].tr("/", "_")}_#{action}", params:, body: block_for(params, call),
                 kind: :route, resource: route.defaults[:controller].tr("/", "_"), file: "#{controller.instance_method(action).source_location&.first}##{action}")
     end
   end
 
+  #: () -> Array[Draft]
   def api_drafts
     return [] unless defined?(Grape::API)
 
@@ -476,7 +580,7 @@ module Propose
       # A mounted API lists its routes once more without the root's prefix.
       next if path.include?("(")
 
-      params = {}
+      params = {} #: Hash[Symbol, untyped]
       url = path_params(path, params, lookups: endpoint_lookups(route.app.source&.source_location&.first))
       # Grape lists a nested param as "lines[sku]" beside "lines"; the draft
       # sends the parent as one Hash (an Array of one Hash when its type is
@@ -508,7 +612,7 @@ module Propose
           # desk form draws it: `kind` from the values the model accepts.
           form = model_for(key.to_s)
           if form&.columns_hash&.key?(leaf)
-            drawn = {}
+            drawn = {} #: Hash[Symbol, untyped]
             expr = form_value(form, leaf, drawn).sub(/\A#{leaf}:\s*/, "")
             if expr.empty?
               params[:"#{key}_#{leaf}"] = drawn.delete(leaf.to_sym)
@@ -532,13 +636,15 @@ module Propose
       rest = path.sub(%r{\A/api/v\d+/}, "")
       name = :"api_#{route.request_method.downcase}_#{rest.gsub(/[^a-z]+/, "_").delete_suffix("_")}"
       call = %(http.#{route.request_method.downcase} "#{url}"#{", params: { #{body.join(", ")} }" unless body.empty?}, headers: auth_for(#{"caller" if api_caller_model}))
-      Draft.new(name:, params:, body: block_for(params, call), kind: :api, resource: "api_#{rest.split("/").reject { it.start_with?(":") }.slice_after { model_for(it.singularize) }.first.join("_")}",
+      words = rest.split("/").reject { it.start_with?(":") }.slice_after { model_for(it.singularize) }.first #: Array[String]
+      Draft.new(name:, params:, body: block_for(params, call), kind: :api, resource: "api_#{words.join("_")}",
                 file: route.app.source&.source_location&.first)
     end
   end
 
   # A Grape param with `values: [...]` draws each listed value and one it
   # refuses; any other param is drawn by its type.
+  #: (String | Symbol key, untyped spec, Hash[Symbol, untyped] params) -> String
   def grape_value(key, spec, params)
     values = spec[:values] if spec.is_a?(Hash)
     return value_for(key, spec.is_a?(Hash) ? spec[:type].to_s : nil, params) unless values.is_a?(Array) && values.all? { it.is_a?(String) || it.is_a?(Integer) }
@@ -547,8 +653,10 @@ module Propose
     "#{key}:"
   end
 
+  #: () -> Hash[untyped, String]
   def grape_mounts
-    @grape_mounts ||= Rails.application.routes.routes.each_with_object({}) do |r, out|
+    table = {} #: Hash[untyped, String]
+    @grape_mounts ||= Rails.application.routes.routes.each_with_object(table) do |r, out|
       app = r.app.respond_to?(:app) ? r.app.app : r.app
       next unless app.is_a?(Class) && app < Grape::API
 
@@ -556,6 +664,7 @@ module Propose
     end
   end
 
+  #: () -> Array[Draft]
   def job_drafts
     ActiveJob::Base.descendants.filter_map do |job|
       next if job.name.nil? || job.name == "ApplicationJob"
@@ -564,7 +673,7 @@ module Propose
       next unless job.instance_method(:perform).source_location&.first.to_s.start_with?(Rails.root.join("app").to_s)
 
       required = job.instance_method(:perform).parameters.select { it.first == :req }.map(&:last)
-      params = {}
+      params = {} #: Hash[Symbol, untyped]
       args = required.map do |arg|
         if arg.to_s.match?(/\A(on|date|day)\z|_(on|date)\z/)
           params[arg] = :local_date
@@ -586,9 +695,11 @@ module Propose
     end
   end
 
+  #: () -> Array[Draft]
   def drafts = @drafts ||= route_drafts + api_drafts + job_drafts
 
   # The fakes the specs install, as [client setter, fake class].
+  #: () -> Array[[String, String]]
   def fakes
     @fakes ||= Rails.root.glob("spec/support/**/*.rb").flat_map do |file|
       File.read(file).scan(/^\s*config\.before.*?(\w+(?:::\w+)*)\.client\s*=\s*(Fake\w+)\.new/m)
@@ -598,6 +709,7 @@ module Propose
   # App modules that talk HTTP themselves (`Net::HTTP.start` inside
   # `LockerApi.register`) rather than through a `.client` a spec replaces:
   # the hunt refuses their real calls, so a person writes the fake.
+  #: () -> Array[String]
   def http_services
     @http_services ||= (Rails.root.glob("app/**/*.rb") + Rails.root.glob("lib/**/*.rb")).filter_map do |file|
       text = File.read(file)
@@ -607,6 +719,7 @@ module Propose
     end.uniq
   end
 
+  #: (Array[Draft] selected) -> Array[String]
   def network_note(selected)
     names = selected.map { it.name.to_s }
     seen = Sequences.network_calls.select { |_, actions| (actions & names).any? }.keys
@@ -620,11 +733,12 @@ module Propose
   # Methods a fake has and the real client does not, named like a failure:
   # each becomes a `failure`. One with a required argument needs a person
   # to say which record it fails for.
+  #: () -> Array[Failure]
   def failures
     @failures ||= fakes.flat_map do |service, fake_name|
-      fake = fake_name.constantize
-      real = "#{service}::Client".safe_constantize
-      (fake.public_instance_methods(false) - (real ? real.public_instance_methods : [])).grep(FAILURE_NAME).map do |method|
+      fake = fake_name.constantize #: untyped
+      real = "#{service}::Client".safe_constantize #: untyped
+      (fake.public_instance_methods(false) - (real ? real.public_instance_methods : Array.new)).grep(FAILURE_NAME).map do |method|
         # The probe prepends a pause hook; read the fake's own signature under it.
         original = fake.instance_method(method)
         original = original.super_method while original.owner != fake
@@ -644,6 +758,7 @@ module Propose
   # headers["Authorization"].delete_prefix("Bearer ")`), with the record's
   # other conditions (`kind: "staff"`). A lookup with conditions or a bearer
   # prefix gets a record of its own in the setup, with a known token.
+  #: () -> Hash[Symbol, untyped]
   def api_auth
     @api_auth ||= begin
       text = Rails.root.glob("app/api/**/*.rb").map { File.read(it) }.join("\n")
@@ -676,9 +791,11 @@ module Propose
     end
   end
 
+  #: () -> untyped
   def api_caller_model = api_auth[:lookups].find { it[3].empty? && !it[4] }&.dig(1)
 
   # The record a bearer or conditioned lookup finds, made in the setup.
+  #: () -> Array[[String, String, String]]
   def api_own_records
     api_auth[:lookups].reject { it[3].empty? && !it[4] }.filter_map do |header, model, column, literal, _|
       factory = factories.find { it.build_class == model } or next
@@ -692,15 +809,16 @@ module Propose
   # literal, a param or a header compared with an ENV value. Each ENV name
   # is set by every area's setup (controller_envs), so the draft sends the
   # value the app expects instead of a drawn word it always refuses.
-  ENV_READ = /ENV(?:\.fetch\(|\[)\s*["'](\w+)["']/
+  ENV_READ = /ENV(?:\.fetch\(|\[)\s*["'](\w+)["']/ #: Regexp
+  #: (untyped controller) -> { params: Hash[Symbol, String], headers: Hash[String, String] }
   def controller_auth(controller)
-    @controller_auth ||= {}
+    @controller_auth ||= Hash.new
     @controller_auth[controller] ||= begin
       files = controller.ancestors.grep(Class).filter_map { Object.const_source_location(it.name)&.first if it.name }
                         .select { it.to_s.start_with?(Rails.root.join("app/controllers").to_s) }.uniq
       text = files.map { File.read(it) }.join("\n")
       secret = ->(src) { (env = src[ENV_READ, 1]) ? (controller_envs << env; "ENV[#{env.inspect}]") : src[/["'][^"']*["']/] }
-      out = { params: {}, headers: {} }
+      out = { params: {}, headers: {} } #: { params: Hash[Symbol, String], headers: Hash[String, String] }
       if (m = text.match(/http_basic_authenticate_with\s+name:\s*([^,]+),\s*password:\s*([^,\n]+)/))
         out[:headers]["Authorization"] = "ActionController::HttpAuthentication::Basic.encode_credentials(#{secret.(m[1])}, #{secret.(m[2])})"
       end
@@ -723,6 +841,7 @@ module Propose
     end
   end
 
+  #: () -> Array[String]
   def controller_envs = @controller_envs ||= []
 
   # A desk page that answers "Sign in first" unless the session holds a
@@ -731,14 +850,17 @@ module Propose
   # looks up by literal conditions (`kind: "staff"`) is made in the setup.
   # Every route of a controller whose before_action reads the key signs in
   # first, through one helper.
+  #: (String text) -> String?
   def session_key(text) = text[/session\[:(\w+)\]/, 1]
 
+  #: (untyped controller) -> bool
   def session_reader?(controller)
     controller._process_action_callbacks.any? do |cb|
       next false unless cb.kind == :before && cb.filter.is_a?(Symbol) && (controller.method_defined?(cb.filter) || controller.private_method_defined?(cb.filter))
 
       key = session_key(reads_through(controller, cb.filter))
-      key && session_sign_in && key == session_sign_in[:key]
+      sign_in = session_sign_in
+      key && sign_in && key == sign_in[:key]
     end
   rescue NameError
     false
@@ -746,6 +868,7 @@ module Propose
 
   # A method's body and the bodies of the controller methods it calls, one
   # call deep: `require_staff` reads the session through `current_staff`.
+  #: (untyped controller, String | Symbol name, ?Integer depth) -> String
   def reads_through(controller, name, depth = 1)
     loc = controller.instance_method(name).source_location or return ""
     body = Prism.parse_file(loc[0]).value.breadth_first_search { it.is_a?(Prism::DefNode) && it.name == name.to_sym && it.location.start_line == loc[1] }&.slice.to_s
@@ -760,8 +883,9 @@ module Propose
 
   # Desk staff that sign in with a password: the setup makes the record with
   # a known one, and the sign-in sends it.
-  DESK_PASSWORD = "sequences-password"
+  DESK_PASSWORD = "sequences-password" #: String
 
+  #: () -> Hash[Symbol, untyped]?
   def session_sign_in
     return @session_sign_in if defined?(@session_sign_in)
 
@@ -777,11 +901,12 @@ module Propose
       key = text[/session\[:(\w+)\]\s*=[^=]/, 1] or next
       # A scope may stand between the model and the lookup (`StaffMember.active.find_by`).
       line = text.lines.find { it.match?(/[A-Z]\w*(?:\.\w+(?:\([^)]*\))?)*?\.find_by!?\(/) }
-      model = line && line[/([A-Z]\w*)(?:\.\w+(?:\([^)]*\))?)*?\.find_by/, 1].safe_constantize
-      literal = line ? line.scan(/(\w+):\s*("[^"]*"|\d+)/).to_h : {}
+      named = line && line[/([A-Z]\w*)(?:\.\w+(?:\([^)]*\))?)*?\.find_by/, 1]
+      model = named&.safe_constantize
+      literal = line ? line.scan(/(\w+):\s*("[^"]*"|\d+)/).to_h : Hash.new #: Hash[String, String]
       # A param a lookup column reads (`email: params[:email]`) gets a known
       # value the setup gives the record too.
-      by_param = line ? line.scan(/(\w+):\s*params(?:\[:|\.(?:require|fetch)\(:)(\w+)/).to_h { |col, k| [k.to_sym, col] } : {}
+      by_param = line ? line.scan(/(\w+):\s*params(?:\[:|\.(?:require|fetch)\(:)(\w+)/).to_h { |col, k| [k.to_sym, col] } : Hash.new #: Hash[Symbol, String]
       # The secret is checked by `authenticate(params[:password])` or by a
       # predicate of the record's own (`staff.pin_matches?(params[:pin])`);
       # the setup gives the record that secret through its writer.
@@ -790,7 +915,7 @@ module Propose
       password = nil unless model&.method_defined?(:"#{secret}=")
       known = by_param.to_h { |k, col| [k, col.include?("email") ? "desk@sequences.test" : "sequences-#{col.tr("_", "-")}"] }
       auth = controller_auth(controller)
-      found = model ? model.where(literal.transform_values { it.delete('"') }) : nil
+      found = model ? model.where(literal.transform_values { it.delete('"') }) : nil #: untyped
       keys = controller_params(controller, action).keys | known.keys | [password].compact
       body = keys.map do |k|
         kind, attribute = controller_params(controller, action)[k]
@@ -808,6 +933,7 @@ module Propose
     end.first
   end
 
+  #: () -> Array[untyped]
   def factories
     @factories ||= FactoryBot.factories.to_a
   end
@@ -815,6 +941,7 @@ module Propose
   # The traits that give a signed-in record a role the app checks
   # (`trait :supervisor` with `current_staff.supervisor?` in a guard), so the
   # caller reaches every action instead of only the ones open to all.
+  #: (untyped factory) -> Array[String]
   def role_traits(factory)
     @app_text ||= Dir[Rails.root.join("app/{controllers,api}/**/*.rb")].map { File.read(it) }.join("\n")
     factory.defined_traits.map(&:name).select do |t|
@@ -826,6 +953,7 @@ module Propose
   # name, so the world can hand it records it already made. A factory that
   # derives one (`copy { association :copy, status: "on_loan" }`) encodes a
   # state the app should reach through its own actions.
+  #: (untyped factory) -> Array[Symbol]?
   def seedable(factory)
     names = factories.map(&:name)
     decls = factory.definition.declarations.to_a
@@ -838,6 +966,7 @@ module Propose
     (assocs - derived).map(&:name)
   end
 
+  #: (untyped decl) -> bool
   def encodes_state?(decl)
     text = case decl
            when FactoryBot::Declaration::Association then decl.instance_variable_get(:@overrides).keys.join(" ") + " " + decl.instance_variable_get(:@traits).join(" ")
@@ -853,6 +982,7 @@ module Propose
   # record as a bare `branch` does: the world can hand it one it made. Only
   # an override or a trait (`association :copy, status: "on_loan"`) encodes
   # a state.
+  #: (untyped decl) -> bool
   def plain_association?(decl)
     case decl
     when FactoryBot::Declaration::Association
@@ -869,10 +999,11 @@ module Propose
 
   # The world each area starts from: two of each root record, members three,
   # and each child made from records already there, every pairing once.
+  #: (Array[String] inserted, Array[String] wanted) -> Array[String]
   def setup_lines(inserted, wanted)
-    made = {}
-    lines = []
-    needed = Set.new
+    made = {} #: Hash[Symbol, Integer]
+    lines = [] #: Array[String]
+    needed = Set.new #: Set[Symbol]
     deps = ->(f) { Array(seedable(f)) | named_parents(f) }
     grow = ->(f) { needed.add?(f.name) && deps.(f).each { |a| factories.find { it.name == a }&.then { grow.(it) } } }
     factories.select { seedable(it) && wanted.include?(it.build_class.table_name) }.each { grow.(it) }
@@ -884,24 +1015,24 @@ module Propose
       ready.each do |factory|
         pending.delete(factory)
         model = factory.build_class
-        assocs = seedable(factory)
+        assocs = seedable(factory) #: Array[Symbol]
         next if assocs.any? && inserted.include?(model.table_name)
 
         var = factory.name.to_s.pluralize
         limits = capacity_args(model, factory) + distinct_times(model)
+        sizes = assocs.map { made[it] }
         if assocs.empty? && limits.empty?
           traits = factory.definition.defined_traits.map(&:name)
           # Each trait in turn (a host, then a manager), so an action only
           # one kind of record may take is reached.
           lines << (traits.empty? ? "#{var} = create_list(:#{factory.name}, world_size(:#{var}, #{root_sizes(factory)}))" :
-                    "#{var} = Array.new(world_size(:#{var}, #{root_sizes(factory)})) { |i| create(:#{factory.name}, *#{[[], *traits.map { [it.to_sym] }].inspect}[i % #{traits.size + 1}]) }")
+                    "#{var} = Array.new(world_size(:#{var}, #{root_sizes(factory)})) { |i| create(:#{factory.name}, *#{[Array.new, *traits.map { [it.to_sym] }].inspect}[i % #{traits.size + 1}]) }")
         else
-          sizes = assocs.map { made[it] }
           most = sizes.inject(1) { |a, b| a * b }.clamp(2, 6)
           # Strides from the sizes drawn this case, and no more children than
           # parent pairings, so each child pairs its parents once.
           picks = assocs.each_with_index.map do |a, i|
-            stride = assocs[0...i].map { "#{it.to_s.pluralize}.size" }.join(" * ").presence || "1"
+            stride = assocs.first(i).map { "#{it.to_s.pluralize}.size" }.join(" * ").presence || "1"
             "#{a}: #{a.to_s.pluralize}[i / (#{stride}) % #{a.to_s.pluralize}.size]"
           end
           # A parent a unique index holds to one child (one open membership
@@ -921,7 +1052,10 @@ module Propose
           end
           once |= single
           list = ->(a) { single.include?(a) ? "free_#{a.to_s.pluralize}" : a.to_s.pluralize }
-          once.each { |a| picks[assocs.index(a)] = "#{a}: #{list.(a)}[i]" }
+          once.each do |a|
+            at = assocs.index(a) #: Integer
+            picks[at] = "#{a}: #{list.(a)}[i]"
+          end
           # A payment of kind "invoice" belongs to an invoice, and to that
           # invoice's patient: a world where it has neither is one the app
           # never makes.
@@ -938,7 +1072,8 @@ module Propose
           lines.concat(settle_lines(var, model, made.keys.map { it.to_s.pluralize }))
         end
         # The largest each can be: a child pairs with every parent up to it.
-        made[factory.name] = assocs.empty? ? root_sizes(factory).max : sizes.inject(1) { |a, b| a * b }.clamp(2, 6)
+        largest = assocs.empty? ? root_sizes(factory).max : sizes.inject(1) { |a, b| a * b }.clamp(2, 6) #: Integer
+        made[factory.name] = largest
       end
     end
     lines
@@ -946,8 +1081,9 @@ module Propose
 
   # The optional parents a factory's own values name (kind "invoice" and
   # `belongs_to :invoice, optional: true`), which the setup fills.
+  #: (untyped factory) -> Array[Symbol]
   def named_parents(factory)
-    values = (FactoryBot.attributes_for(factory.name) rescue {}).values.grep(String)
+    values = (FactoryBot.attributes_for(factory.name) rescue Hash.new).values.grep(String)
     names = factories.map(&:name)
     factory.build_class.reflect_on_all_associations(:belongs_to)
            .select { it.options[:optional] && !it.polymorphic? && values.include?(it.name.to_s) && names.include?(it.name) }.map(&:name)
@@ -955,12 +1091,14 @@ module Propose
 
   # World sizes are drawn per case, so capacity pressure and an empty
   # waitlist both happen: members 2 to 8, other roots 1 to 3.
+  #: (untyped factory) -> Range[Integer]
   def root_sizes(factory) = factory.name == :member ? (2..8) : (1..3)
 
   # A capacity column (seats, capacity, a limit) drawn 1 to 3 per record.
   # A capacity column some records must leave blank (seats only on a team
   # plan) would make every drafted record invalid, so it is drawn only when
   # the factory's record stays valid with it set.
+  #: (untyped model, untyped factory) -> Array[String]
   def capacity_args(model, factory)
     model.columns.select { it.type == :integer && it.name.match?(/capacity|seats|limit|\Amax_|slots|quota/) }
          .select { |col| (FactoryBot.build(factory.name, col.name => 1).valid? rescue true) }
@@ -970,6 +1108,7 @@ module Propose
   # The columns a unique index holds alone, partial ones included: a
   # partial index still forbids two rows its condition selects, and the
   # factory's defaults usually meet that condition.
+  #: (untyped model) -> Array[String]
   def conn_unique_columns(model)
     indexes = ActiveRecord::Base.connection.indexes(model.table_name).select(&:unique)
     alone = indexes.select { Array(it.columns).size == 1 }.map { Array(it.columns).first }
@@ -983,6 +1122,7 @@ module Propose
   # per member) collides when every record takes the factory's one default,
   # and a collision in the world is the setup's, not the app's. Each record
   # gets its own hour instead.
+  #: (untyped model) -> Array[String]
   def distinct_times(model)
     conn = ActiveRecord::Base.connection
     held = conn.indexes(model.table_name).select(&:unique).flat_map { Array(it.columns) }
@@ -1001,6 +1141,7 @@ module Propose
   # action (a kiosk return that requests a transfer) is seeded too: that
   # action needs a world of its own first, so without seeding, the actions
   # that draw from the table would never run.
+  #: (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[String]
   def made_by_own_actions(selected, stats)
     selected.flat_map do |a|
       stats[a.name][:writes].keys.grep(/\Ainsert /).map { it.split.last }
@@ -1012,25 +1153,31 @@ module Propose
   # :practitioners`, `guest_email_from: :guest_passes`)
   # is made in the setup even when the area inserts into it: an empty pool
   # leaves the action never drawn.
+  #: (Array[Draft] selected) -> Array[String]
   def copied_from(selected) = selected.flat_map { |d| d.params.values.grep(Symbol).map { pool_table(it) } }.uniq
 
+  #: (Array[Draft] selected) -> Array[String]
   def pool_tables(selected) = selected.flat_map { it.params.values }.grep(Symbol).map { pool_table(it) }
 
   # What the actions read in the probe (a member's active membership) is
   # made too, or each check-in is refused for a record the area never has.
+  #: (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[String]
   def setup_tables(selected, stats) = pool_tables(selected) | selected.flat_map { stats.dig(it.name, :reads)&.keys || [] }
 
+  #: (Array[Draft] selected) -> Hash[Symbol, Hash[Symbol, untyped]]
   def probe(selected)
     source = definition_source("probe", selected, {}, refusals: [], failures: [], setup: setup_lines([], models.map(&:table_name)))
     definition = Sequences::Definition.new("probe", shared: false)
-    definition.instance_eval(source.lines[1..-2].join)
+    inside = source.lines[1..-2] #: Array[String]
+    definition.instance_eval(inside.join)
     Sequences.probe(definition)
   end
 
   # The table a resource is about: `room_bookings` -> room_bookings,
   # `api_staff_closures` -> closures; nil for `api_kiosk` or a webhook.
+  #: (String? resource) -> String?
   def primary(resource)
-    word = resource.to_s.split("_").each_index.lazy.map { |i| resource.to_s.split("_")[i..].join("_") }.find { model_for(it.singularize) }
+    word = resource.to_s.split("_").each_index.lazy.map { |i| resource.to_s.split("_").drop(i).join("_") }.find { model_for(it.singularize) }
     word && model_for(word.singularize).table_name
   end
 
@@ -1038,27 +1185,30 @@ module Propose
   # hop): where the probe saw no write or no outside call, this places a job
   # or an endpoint and says which fakes it can reach.
   # A route's file is `path#action`: only that method is read.
+  #: (String? file) -> Array[String]
   def static_constants(file)
     path, method = file.to_s.split("#", 2)
     return [] unless File.exist?(path.to_s)
 
-    @static ||= {}
+    @static ||= Hash.new
     @static[file] ||= begin
-      names = ->(p) { [].tap { |acc| walk_constants(Prism.parse_file(p).value, acc) } }
-      tree = Prism.parse_file(path).value
+      names = ->(p) { Array.new.tap { |acc| walk_constants(Prism.parse_file(p).value, acc) } } #: ^(String) -> Array[String]
+      tree = Prism.parse_file(path.to_s).value #: untyped
       tree = tree.breadth_first_search { it.is_a?(Prism::DefNode) && it.name.to_s == method } || tree if method
-      direct = [].tap { walk_constants(tree, it) }
+      direct = Array.new.tap { walk_constants(tree, it) } #: Array[String]
       hop = direct.uniq.filter_map { it.safe_constantize }.select { it.is_a?(Module) && !(it.is_a?(Class) && it < ActiveRecord::Base) }
                   .filter_map { Object.const_source_location(it.name)&.first }.select { it.start_with?(Rails.root.join("app").to_s) }
       (direct + hop.uniq.flat_map(&names)).uniq
     end
   end
 
+  #: (String? file) -> Hash[String, Integer]
   def static_tables(file)
     static_constants(file).filter_map { it.safe_constantize }.select { it.is_a?(Class) && it < ActiveRecord::Base && !it.abstract_class? }
                           .map(&:table_name).tally
   end
 
+  #: (untyped node, Array[String] acc) -> void
   def walk_constants(node, acc)
     acc << node.slice if node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
     node.compact_child_nodes.each { walk_constants(it, acc) } unless node.is_a?(Prism::ConstantPathNode)
@@ -1070,15 +1220,16 @@ module Propose
   # area then gets the actions that make the records its pools take, and is
   # filled, jobs first, with the actions that write its table, up to
   # MAX_ACTIONS.
+  #: (Hash[Symbol, untyped] stats) -> Array[[String, Array[Draft], Array[String]]]
   def areas(stats)
-    written = ->(d) { stats[d.name][:writes].keys.map { it.split.last }.uniq }
-    inserts = ->(d, t) { stats[d.name][:writes]["insert #{t}"] }
-    touches = ->(d) { written.(d).then { it.empty? || d.kind == :job ? it | static_tables(d.file).keys : it } }
+    written = ->(d) { stats[d.name][:writes].keys.map { it.split.last }.uniq } #: ^(Draft) -> Array[String]
+    inserts = ->(d, t) { stats[d.name][:writes]["insert #{t}"] } #: ^(Draft, String) -> Integer
+    touches = ->(d) { written.(d).then { it.empty? || d.kind == :job ? it | static_tables(d.file).keys : it } } #: ^(Draft) -> Array[String]
     seeds = drafts.select(&:resource).group_by { primary(it.resource) || "~#{it.resource}" }
     areas = seeds.reject { |k, _| k.start_with?("~") }.map { |table, ds| [table, ds.dup] }.to_h
     seeds.select { |k, _| k.start_with?("~") }.each do |key, ds|
       counts = ds.flat_map(&written).tally
-      counts = ds.map { static_tables(it.file) }.inject({}) { |a, b| a.merge(b) { |_, x, y| x + y } } if counts.empty?
+      counts = ds.map { static_tables(it.file) }.inject(Hash.new) { |a, b| a.merge(b) { |_, x, y| x + y } } if counts.empty?
       target = counts.select { |t, _| areas.key?(t) }.max_by { |t, n| [n, t] }&.first
       if target then areas[target].concat(ds)
       else areas[key.delete_prefix("~")] = ds.dup
@@ -1092,7 +1243,8 @@ module Propose
       needed.filter_map do |pool|
         next if selected.any? { inserts.(it, pool).positive? }
 
-        drafts.max_by { inserts.(it, pool) }.then { it if inserts.(it, pool).positive? }
+        best = drafts.max_by { inserts.(it, pool) } #: Draft
+        best if inserts.(best, pool).positive?
       end.uniq
     end
     # An action the probe saw refused for a state ("Only a checked in
@@ -1125,7 +1277,7 @@ module Propose
         selected += [d] + makers.(selected + [d])
       end
       selected += enablers.(selected)
-    [table, selected, ([table] + selected.flat_map(&written)).uniq]
+    [table, selected, ([table] + selected.flat_map(&written)).uniq] #: [String, Array[Draft], Array[String]]
   end
   # An action no area took (a job that only reaches a table no resource is
   # about) joins the area that writes most of what it touches.
@@ -1142,6 +1294,7 @@ end
   # `holds_create` and POST /api/v1/holds, `fines_pay` and POST
   # /api/v1/fines/:id/pay. Matched by the table both are about and the verb:
   # the probe often sees one of the two only refused, so writes miss pairs.
+  #: (Draft d) -> Symbol?
   def door_key(d)
     if d.kind == :route
       action = d.name.to_s.delete_prefix("#{d.resource}_")
@@ -1154,6 +1307,7 @@ end
     end
   end
 
+  #: (Array[Draft] selected, Hash[Symbol, untyped] stats) -> Array[[Symbol, Symbol, String]]
   def twins(selected, stats)
     return [] if stats.empty? # the probe itself
     selected.select { it.kind == :route }.flat_map do |desk|
@@ -1163,6 +1317,7 @@ end
     end
   end
 
+  #: (String name, Array[Draft] selected, Hash[Symbol, untyped] stats, refusals: Array[String], failures: Array[Failure], ?setup: Array[String], ?note: String?) -> String
   def definition_source(name, selected, stats, refusals:, failures:, setup: [], note: nil)
     pools = selected.flat_map { it.params.values }.grep(Symbol).reject { %i[TODO local_date local_time text].include?(it) }.uniq
     reached = ->(d) { (stats.dig(d.name, :outside) || []) | fakes.select { |service, _| static_constants(d.file).include?(service) }.map(&:last) }
@@ -1173,12 +1328,13 @@ end
     out << "  setup do\n"
     fakes.each { |service, fake| out << "    #{service}.client = #{fake}.new\n" }
     (api_auth[:envs].map { it[1] } | controller_envs).uniq.each { |env| out << "    ENV[#{env.inspect}] = \"sequences-#{env.downcase.tr("_", "-")}\"\n" }
-    signs_in = session_sign_in && selected.any? { it.body.include?("desk_sign_in") || it.body.include?(session_sign_in[:path].inspect) }
-    out << "    #{session_sign_in[:setup]}\n" if signs_in && session_sign_in[:setup]
+    sign_in = session_sign_in
+    signs_in = sign_in && selected.any? { it.body.include?("desk_sign_in") || it.body.include?(sign_in[:path].inspect) }
+    out << "    #{sign_in[:setup]}\n" if sign_in && signs_in && sign_in[:setup]
     # The caller's own record heads the list of its kind when the setup
     # makes one, so the records made from that list (its membership, its
     # appointments) always include one of its own.
-    own = selected.any? { it.kind == :api } ? api_own_records : []
+    own = selected.any? { it.kind == :api } ? api_own_records : Array.new
     setup = setup.flat_map do |line|
       joined = own.select { |_, made, _| line.start_with?("#{made[/create\(:(\w+)/, 1].pluralize} = ") }
       own -= joined
@@ -1196,7 +1352,7 @@ end
     end
     out << "  outside_calls #{fakes.map(&:last).join(", ")}\n" unless fakes.empty?
     out << "  clock start: [2026, 3, 7, 10, 0, 0], zones: [\"Pacific/Auckland\", \"America/Los_Angeles\"]\n\n"
-    helper_lines = []
+    helper_lines = [] #: Array[String]
     if selected.any? { it.kind == :api }
       own = api_own_records
       headers = api_auth[:lookups].filter_map do |h, model, col, literal, bearer|
@@ -1209,9 +1365,9 @@ end
       headers.uniq! { it[/\A"[^"]+"/] }
       helper_lines << "    def auth_for(caller = nil) = { #{headers.join(", ")} }"
     end
-    if signs_in
-      helper_lines << "    # The desk pages need a staff session; #{session_sign_in[:path]} makes one."
-      helper_lines << "    def desk_sign_in = http.post(#{session_sign_in[:path].inspect}, params: { #{session_sign_in[:body].join(", ")} })"
+    if sign_in && signs_in
+      helper_lines << "    # The desk pages need a staff session; #{sign_in[:path]} makes one."
+      helper_lines << "    def desk_sign_in = http.post(#{sign_in[:path].inspect}, params: { #{sign_in[:body].join(", ")} })"
     end
     out << "  helpers do\n#{helper_lines.join("\n")}\n  end\n\n" unless helper_lines.empty?
     shown = failures.select { |f| selected.any? { reached.(it).include?(f.service) } }
@@ -1230,6 +1386,7 @@ end
     out << "end\n"
   end
 
+  #: (Hash[Symbol, untyped] stats, Array[Draft] selected) -> Array[String]
   def app_refusals(stats, selected)
     selected.flat_map { stats[it.name][:errors].keys }.uniq.select do |name|
       klass = name.safe_constantize
@@ -1237,6 +1394,7 @@ end
     end.sort
   end
 
+  #: (String name, String source) -> String
   def spec_file(name, source)
     <<~RUBY
       require "rails_helper"
@@ -1257,6 +1415,7 @@ end
     RUBY
   end
 
+  #: (untyped model) -> Array[String]
   def statuses(model)
     return [] unless model.column_names.include?("status")
 
@@ -1264,17 +1423,13 @@ end
     Array(inclusion || (model.const_get(:STATUSES, false) if model.const_defined?(:STATUSES, false))).map(&:to_s)
   end
 
-  SETTLED = /\A(paid|settled|completed?|captured|succeeded)\z/
-  AMOUNT = /_cents\z|\Aamount\z/
+  SETTLED = /\A(paid|settled|completed?|captured|succeeded)\z/ #: Regexp
+  AMOUNT = /_cents\z|\Aamount\z/ #: Regexp
 
   # Money conserved: a record with an amount and a status, and its payments
   # (or charges) with an amount and a status. What a settled record says it
   # took must be what was captured for it, and nothing for any other status.
-  MoneyRule = Data.define(:model, :amount, :settled, :assoc, :child, :paid, :captured, :kind) do
-    def name = "#{model.model_name.singular}_#{amount}_matches_#{assoc.name}_captured"
-    def owner = child.reflect_on_all_associations(:belongs_to).find { it.foreign_key.to_s == assoc.foreign_key.to_s }&.name
-  end
-
+  #: () -> Array[MoneyRule]
   def money_rules
     @money_rules ||= models.flat_map do |model|
       amount = model.column_names.find { it.match?(AMOUNT) } or next []
@@ -1298,6 +1453,7 @@ end
     end
   end
 
+  #: () -> Array[String]
   def money_invariants
     money_rules.map do |r|
       # A payment of one kind (a deposit) may be taken at booking, before the
@@ -1328,6 +1484,7 @@ end
   # payment for it break the money rule before any action runs. After the
   # payments are made, each record with a captured one is marked settled at
   # the amount captured, so the hunt starts from a world the rule allows.
+  #: (String child_var, untyped child_model, Array[String] made_vars) -> Array[String]
   def settle_lines(child_var, child_model, made_vars)
     money_rules.filter_map do |r|
       next unless r.child == child_model && r.kind.empty? && r.owner
@@ -1339,11 +1496,12 @@ end
     end
   end
 
-  KIND_COLUMN = /\A(kind|purpose|category|payment_type|charge_type)\z/
+  KIND_COLUMN = /\A(kind|purpose|category|payment_type|charge_type)\z/ #: Regexp
 
   # "" when the payments have one kind; ", kind: record.kind" when both
   # sides name the kind; ", kind: \"deposit\"" when the amount column names
   # one (deposit_cents); nil when nothing says which payments count.
+  #: (untyped model, String amount, untyped child) -> String?
   def kind_filter(model, amount, child)
     col = child.column_names.find { it.match?(KIND_COLUMN) } or return ""
     return ", #{col}: record.#{col}" if model.column_names.include?(col)
@@ -1357,6 +1515,7 @@ end
   # Order kept: a waiting status (waitlisted, queued, pending) that some code
   # reads in timestamp order. Rows alike in all but when they entered it must
   # leave it in that order.
+  #: () -> Array[String]
   def order_invariants
     code = Rails.root.glob("app/**/*.rb").map { File.read(it) }.join("\n")
     models.flat_map do |model|
@@ -1388,6 +1547,7 @@ end
   # One child each: a `has_one` the database does not hold to one row (no
   # unique index on its key) is held by the code alone, and two requests at
   # once can leave two, of which the app then reads either.
+  #: () -> Array[String]
   def one_child_invariants
     models.flat_map do |model|
       model.reflect_on_all_associations(:has_one).filter_map do |assoc|
@@ -1412,6 +1572,7 @@ end
 
   # Bounds a column name states: what is left never goes below zero, a
   # count never passes its max, and a percentage stays within 0..100.
+  #: () -> Array[String]
   def bound_invariants
     models.flat_map do |model|
       cols = model.columns.select { %i[integer decimal float].include?(it.type) }.map(&:name)
@@ -1439,10 +1600,12 @@ end
     end
   end
 
+  #: () -> Array[String]
   def drafted_invariants = money_invariants + order_invariants + one_child_invariants + bound_invariants
 
   # The drafted rules are live; the TODOs ask for the rest. A run with no
   # invariants still checks errors, 5xx, zones, offsets and doors.
+  #: () -> String
   def invariants_file
     stateful = models.select { it.column_names.include?("status") }
     <<~RUBY
@@ -1463,25 +1626,30 @@ end
 
   # An invariants.rb that exists keeps the agent's rules; a drafted rule it
   # does not name yet goes in before its last `end`.
+  #: (untyped path) -> Array[String]
   def add_drafted(path)
     text = File.read(path)
-    missing = drafted_invariants.reject { text.include?(it[/invariant\(:(\w+)\)/, 1]) }
+    missing = drafted_invariants.reject { text.include?(it[/invariant\(:(\w+)\)/, 1].to_s) }
     return [] if missing.empty?
 
     at = text.rindex(/^end\b/) or return []
-    File.write(path, text[0...at] + missing.join("\n\n").gsub(/^(?=.)/, "  ") + "\n" + text[at..])
-    missing.map { it[/invariant\(:(\w+)\)/, 1] }
+    head = text[0...at] #: String
+    tail = text[at..] #: String
+    File.write(path, head + missing.join("\n\n").gsub(/^(?=.)/, "  ") + "\n" + tail)
+    missing.map { it[/invariant\(:(\w+)\)/, 1].to_s }
   end
 
+  #: (String name, Array[Draft] selected, Hash[Symbol, untyped] stats, Array[String] own) -> String
   def summarize(name, selected, stats, own)
     reached = selected.select { |d| stats[d.name][:outcomes].keys.any? { !it.include?("refused") } }
     "#{name}: #{selected.size} actions (#{reached.size} succeeded in the probe), writes #{own.first(6).join(", ")}"
   end
 
+  #: (Array[String] argv) -> void
   def main(argv)
     Rails.application.eager_load!
     force = argv.delete("--force")
-    json_path = (i = argv.index("--probe-json")) && argv.slice!(i, 2).last
+    json_path = (i = argv.index("--probe-json")) && argv.slice!(i, 2)&.last
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     if argv.delete("--all")
       stats = probe(drafts)

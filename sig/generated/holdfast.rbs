@@ -1,0 +1,35 @@
+# Generated from lib/holdfast.rb with RBS::Inline
+
+module Holdfast
+  # A parsed JSON object: what record.json, a jitcatch brief, a test
+  # result or a hunt table holds. Its values are whatever the file says.
+  type json = Hash[String, untyped]
+
+  # file => { "base" => [lines], "head" => [lines] } a diff changed.
+  type changed_lines = Hash[String, Hash[String, Array[Integer]]]
+
+  # test => side ("1" base, "2" head) => file => what that test ran on
+  # that side: line numbers, or under the "(drew)" and "(arms)" keys the
+  # values its inputs wrote and the branch arms it took.
+  type reach = Hash[String, Hash[String, Hash[String, Array[untyped]]]]
+
+  class Error < StandardError
+  end
+
+  # Loaded into the app's own test processes by path, never required here.
+  # __dir__ is nil only in code that eval reads, never in a file.
+  HERE: String
+
+  RUNTIME: String
+
+  SEQUENCES: String
+
+  # : (String) -> String
+  def self.dir: (String) -> String
+
+  # : (String) -> String
+  def self.slug: (String) -> String
+
+  # : (String) -> String
+  def self.snake: (String) -> String
+end

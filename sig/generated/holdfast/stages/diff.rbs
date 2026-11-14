@@ -1,0 +1,149 @@
+# Generated from lib/holdfast/stages/diff.rb with RBS::Inline
+
+module Holdfast
+  module Stages
+    # Runs every test that speaks for a target on base and on head (jitcatch's
+    # runner) and returns one Outcome per test, with the app lines each test
+    # file ran on each side. Fold decides what an outcome says about a target;
+    # Diff only runs and classifies. Four sources:
+    #   kept      base's copy of each selected test the change did not edit
+    #   authored  head's copy of each test file the change added or edited;
+    #             it states the new behavior, so it counts as meant to change
+    #   evidence  .holdfast/evidence/<target>/ tests the agent wrote
+    #   pin       the pin tests Fill wrote (inputs or drafted)
+    # A path segment named `change` marks a test whose difference is intended.
+    module Diff
+      # +edited+ is the head lines the change edited in an authored test.
+      class Source < Data
+        attr_reader path(): String
+
+        attr_reader targets(): Array[String]
+
+        attr_reader origin(): String
+
+        attr_reader edited(): Array[Integer]?
+
+        def self.new: (String path, Array[String] targets, String origin, Array[Integer]? edited) -> instance
+                    | (path: String, targets: Array[String], origin: String, edited: Array[Integer]?) -> instance
+
+        def self.members: () -> [ :path, :targets, :origin, :edited ]
+
+        def members: () -> [ :path, :targets, :origin, :edited ]
+      end
+
+      # +test+ is jitcatch's result for one example on both sides.
+      class Outcome < Data
+        attr_reader source(): Source
+
+        attr_reader test(): json
+
+        attr_reader kind(): String
+
+        attr_reader reason(): String
+
+        attr_reader evidence(): String
+
+        attr_reader repro(): String
+
+        attr_reader next_step(): String
+
+        def self.new: (Source source, json test, String kind, String reason, String evidence, String repro, String next_step) -> instance
+                    | (source: Source, test: json, kind: String, reason: String, evidence: String, repro: String, next_step: String) -> instance
+
+        def self.members: () -> [ :source, :test, :kind, :reason, :evidence, :repro, :next_step ]
+
+        def members: () -> [ :source, :test, :kind, :reason, :evidence, :repro, :next_step ]
+      end
+
+      class Outcome
+        # : () -> String
+        def place: () -> String
+      end
+
+      class Result < Data
+        attr_reader outcomes(): Array[Outcome]
+
+        attr_reader reach(): reach
+
+        attr_reader failure(): String?
+
+        def self.new: (Array[Outcome] outcomes, reach reach, String? failure) -> instance
+                    | (outcomes: Array[Outcome], reach: reach, failure: String?) -> instance
+
+        def self.members: () -> [ :outcomes, :reach, :failure ]
+
+        def members: () -> [ :outcomes, :reach, :failure ]
+      end
+
+      # Where read_reach keeps the values a test file's inputs wrote.
+      DREW: ::String
+
+      # Prefix of the key that holds the branch arms a test took in one file,
+      # each as "line:column-line:column", the start and end of the arm.
+      ARMS: ::String
+
+      DISCARDS: Hash[String, String]
+
+      # What a test that left no reach file ran: nothing, on either side.
+      NO_SIDES: Hash[String, Hash[String, Array[untyped]]]
+
+      NO_FILES: Hash[String, Array[untyped]]
+
+      # @rbs change: Change
+      # @rbs record: Record
+      # @rbs targets: Array[Target]
+      # @rbs pins: Array[Fill::Pins]
+      # @rbs values: Array[String]
+      # @rbs return: Result
+      def self.run: (Change change, Record record, Array[Target] targets, Array[Fill::Pins] pins, ?values: Array[String]) -> Result
+
+      # test path (as in the run directory) => { "1" => {file => [lines]}, "2" => ... },
+      # and the same for "<test path>:<example line>" when the recorder could
+      # tell the examples of a file apart.
+      # What one outcome ran on one side ("1" base, "2" head): its own
+      # example's lines when they were kept, else its whole file's.
+      # : (reach reach, Outcome outcome, String side) -> Hash[String, Array[untyped]]
+      def self.ran: (reach reach, Outcome outcome, String side) -> Hash[String, Array[untyped]]
+
+      # : (String) -> reach
+      def self.read_reach: (String) -> reach
+
+      # : (Change change, Record record, Array[Target] targets, Array[Fill::Pins] pins, String work) -> Array[Source]
+      def self.gather: (Change change, Record record, Array[Target] targets, Array[Fill::Pins] pins, String work) -> Array[Source]
+
+      # : (Change change, String rev, String file) -> String?
+      def self.show: (Change change, String rev, String file) -> String?
+
+      # : (String all, String path, String? text, Array[String] targets, String origin, ?Array[Integer]? edited) -> Source
+      def self.write: (String all, String path, String? text, Array[String] targets, String origin, ?Array[Integer]? edited) -> Source
+
+      # Head line numbers the change added or rewrote in one test file.
+      # : (Change change, String file) -> Array[Integer]
+      def self.edited_lines: (Change change, String file) -> Array[Integer]
+
+      # The outcomes of one chunk of tests, or none and why the setup failed.
+      # : (Change change, Record record, Array[Source] chunk, String dir, String reach_dir, ?Array[String] values) -> [Array[Outcome], String?]
+      def self.compare: (Change change, Record record, Array[Source] chunk, String dir, String reach_dir, ?Array[String] values) -> [ Array[Outcome], String? ]
+
+      # : (Source) -> String
+      def self.shown_path: (Source) -> String
+
+      MARK: Hash[String, String]
+
+      # : (json test, Array[Integer] starts, Array[Integer] edited) -> bool
+      def self.example_edited?: (json test, Array[Integer] starts, Array[Integer] edited) -> bool
+
+      # Its kind, its reason and, when the origin's mark does not say it, its next step.
+      # : (json test, bool meant) -> [String, String, String?]
+      def self.classify: (json test, bool meant) -> [ String, String, String? ]
+
+      NO_BASE: ::Regexp
+
+      # : (json) -> bool
+      def self.no_base?: (json) -> bool
+
+      # : (json) -> String
+      def self.evidence: (json) -> String
+    end
+  end
+end

@@ -1,0 +1,647 @@
+# Generated from lib/holdfast/sequences/sequences.rb with RBS::Inline
+
+module Sequences
+  # Raised between cases once shrinking has had its share of the time.
+  class ShrinkCut < Exception
+  end
+
+  # Seconds shrinking may take after the first failure. A two-step repro
+  # found in a second spent the rest of a 150 s area shrinking the world.
+  SHRINK_SECONDS: Integer
+
+  type entry = Hash[Symbol, untyped]
+
+  interface _Draw
+    def index: (Integer size) -> Integer
+
+    def int: (Range[Integer] range) -> Integer
+
+    def assume: (bool ok) -> untyped
+  end
+
+  self.@network_calls: Hash[String, Array[String]]
+
+  self.@registry: Hash[String | Symbol, Definition]
+
+  self.@first_failure: Failure?
+
+  self.@tallies: Hash[Symbol, Hash[String, Integer]]?
+
+  self.@examples: Hash[String, Hash[String, Integer]]?
+
+  self.@shared: Array[untyped]
+
+  self.@outside_callers: Set[Symbol]
+
+  self.@outside_classes: Hash[Symbol, Set[Module]]
+
+  self.@outside_classes_declared: Set[Module]
+
+  self.@sequence_state_sql: String
+
+  self.@empty_sql: String
+
+  self.@empty_statements: Array[String]
+
+  class Failure < StandardError
+    attr_reader log: Array[entry]
+
+    attr_reader definition: Definition
+
+    # : (String message, log: Array[entry], definition: Definition) -> void
+    def initialize: (String message, log: Array[entry], definition: Definition) -> void
+
+    # The log quotes request params and response text, which can arrive as
+    # binary; a message that raises on its own encoding hides the failure.
+    # : () -> String
+    def message: () -> String
+  end
+
+  # The world could not be built, so no sequence ran. Not shrunk.
+  class SetupError < StandardError
+  end
+
+  # A replayed step whose record is missing: the run went another way.
+  class Diverged < StandardError
+  end
+
+  # An action opened a TCP connection to another host: a service the area
+  # does not fake. Its answer (or a DNS failure) is the environment, not the
+  # app, and a write through it would reach a real system.
+  class RealNetwork < StandardError
+  end
+
+  LOOPBACK: Regexp
+
+  # : () -> Hash[String, Array[String]]
+  def self.network_calls: () -> Hash[String, Array[String]]
+
+  # : (untyped host, untyped port) -> void
+  def self.real_network!: (untyped host, untyped port) -> void
+
+  # @rbs module-self TCPSocket
+  module NetworkGate : TCPSocket
+    # : (untyped host, untyped port, *untyped rest, **untyped kw) -> void
+    def initialize: (untyped host, untyped port, *untyped rest, **untyped kw) -> void
+  end
+
+  # @rbs module-self singleton(Socket)
+  module SocketGate
+    # : (untyped host, untyped port, *untyped rest, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+    def tcp: (untyped host, untyped port, *untyped rest, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+  end
+
+  # : () -> void
+  def self.refuse_network!: () -> void
+
+  # A pause point is a method on a fake (or any class) where an action can be
+  # held while another action runs.
+  module Pause
+    self.@points: Hash[[ Symbol, Module, Symbol ], bool]
+
+    attr_reader points: Hash[[ Symbol, Module, Symbol ], bool]
+
+    # : (Symbol name, Module klass, Symbol method_name) -> untyped
+    def self.define: (Symbol name, Module klass, Symbol method_name) -> untyped
+  end
+
+  # `pause_at: :batch_load` holds a job right after its first query that
+  # returns rows (a find_each batch, a `to_a`), before it touches any of them:
+  # the window where a desk action changes a row the job already holds.
+  # @rbs module-self ActiveRecord::Relation
+  module BatchPause : ActiveRecord::Relation
+    # Only the outermost load pauses: `includes(:copy)` loads the copies
+    # inside the transfers' load, and holding there held the job on the
+    # copies it preloads, not on the rows it acts on.
+    # : () -> Array[untyped]
+    def records: () -> Array[untyped]
+  end
+
+  STATE_COLUMNS: Array[String]
+
+  # : (untyped record) -> [String, untyped]?
+  def self.state_of: (untyped record) -> [ String, untyped ]?
+
+  class Action < Struct[untyped]
+    attr_accessor name: Symbol
+    attr_accessor params: Hash[Symbol, untyped]
+    attr_accessor pause_at: Symbol?
+    attr_accessor weight: Numeric
+    attr_accessor block: untyped
+    attr_accessor failures: Array[Symbol]
+    attr_accessor fresh: Array[Symbol]
+    def self.new: (name: Symbol, params: Hash[Symbol, untyped], pause_at: Symbol?, weight: Numeric, block: untyped, failures: Array[Symbol], fresh: Array[Symbol]) -> Action
+  end
+
+  # An end drawn from its start: `ends_at: after(:starts_at, minutes: [...])`.
+  # Drawn apart, nearly every pair broke a duration rule and the action was
+  # only ever refused.
+  class After < Data
+    attr_reader from(): Symbol
+
+    attr_reader minutes(): Array[Integer]
+
+    def self.new: (Symbol from, Array[Integer] minutes) -> instance
+                | (from: Symbol, minutes: Array[Integer]) -> instance
+
+    def self.members: () -> [ :from, :minutes ]
+
+    def members: () -> [ :from, :minutes ]
+  end
+
+  class After
+    # : () -> String
+    def inspect: () -> String
+  end
+
+  # The blocks an area's definition passes (setup, pools, invariants,
+  # failures) run with another self and take what the area wrote, so they
+  # stay untyped.
+  class Definition
+    @default_pause: Symbol?
+
+    @helpers: Module
+
+    @setup: untyped
+
+    attr_reader name: String | Symbol
+
+    attr_reader actions: Hash[Symbol, Action]
+
+    attr_reader invariants: Hash[Symbol, untyped]
+
+    attr_reader refusal_classes: Array[Module]
+
+    attr_reader pools: Hash[Symbol, untyped]
+
+    attr_reader zones: Array[String]
+
+    attr_reader clock_start: Time?
+
+    attr_reader ignore_columns: Array[String]
+
+    attr_reader tick_weight: Numeric?
+
+    attr_reader skipped: Hash[Symbol, String]
+
+    attr_reader failures: Hash[Symbol, untyped]
+
+    attr_reader twin_pairs: Array[[ Symbol, Symbol, String ]]
+
+    # : (String | Symbol name, ?shared: bool) -> void
+    def initialize: (String | Symbol name, ?shared: bool) -> void
+
+    # : () { () -> untyped } -> untyped
+    def setup: () { () -> untyped } -> untyped
+
+    # : (Context ctx) -> untyped
+    def run_setup: (Context ctx) -> untyped
+
+    # : (Symbol name) { () -> untyped } -> untyped
+    def pool: (Symbol name) { () -> untyped } -> untyped
+
+    # : () ?{ (Module) [self: Module] -> untyped } -> untyped
+    def helpers: () ?{ (Module) [self: Module] -> untyped } -> untyped
+
+    # Every public method of these classes (the fakes of outside services) is
+    # a pause point, so any action can be held at its first outside call.
+    # : (*Module classes) -> Symbol
+    def outside_calls: (*Module classes) -> Symbol
+
+    # : (*Module classes) -> Array[Module]
+    def refusals: (*Module classes) -> Array[Module]
+
+    # : (Symbol name) { () -> untyped } -> untyped
+    def invariant: (Symbol name) { () -> untyped } -> untyped
+
+    # : (*(String | Symbol) columns) -> Array[String]
+    def ignore: (*String | Symbol columns) -> Array[String]
+
+    # : (Symbol from, minutes: Array[Integer]) -> After
+    def after: (Symbol from, minutes: Array[Integer]) -> After
+
+    # Two doors to one effect (a desk route and an API endpoint): run both
+    # from the same state with the same inputs; the outcome and the rows of
+    # +table+ must match.
+    # : (Symbol first, Symbol second, table: String | Symbol) -> Array[[Symbol, Symbol, String]]
+    def twins: (Symbol first, Symbol second, table: String | Symbol) -> Array[[ Symbol, Symbol, String ]]
+
+    # Starts the clock and turns on the boundary-biased tick rule and the
+    # process time-zone replay.
+    # : (start: untyped, ?zones: Array[String], ?weight: Numeric) -> Numeric
+    def clock: (start: untyped, ?zones: Array[String], ?weight: Numeric) -> Numeric
+
+    # An action with a :TODO param does not run; the report lists it with
+    # the params to fill, and the rest of the area still runs.
+    # : (Symbol name, ?pause_at: Symbol?, ?weight: Numeric, ?failures: Array[Symbol], ?fresh: Array[Symbol], **untyped params) ?{ (?) -> untyped } -> untyped
+    def action: (Symbol name, ?pause_at: Symbol?, ?weight: Numeric, ?failures: Array[Symbol], ?fresh: Array[Symbol], **untyped params) ?{ (?) -> untyped } -> untyped
+
+    # How an outside service fails: the block arms the fake. An action that
+    # lists the failure runs once more as its own step with the fake armed.
+    # : (Symbol name) { () -> untyped } -> untyped
+    def failure: (Symbol name) { () -> untyped } -> untyped
+
+    # : () -> Array[Action]
+    def pausable: () -> Array[Action]
+
+    # : (Action action) -> Symbol?
+    def pause_point: (Action action) -> Symbol?
+  end
+
+  # : (String | Symbol name) { () [self: Definition] -> untyped } -> Definition
+  def self.define: (String | Symbol name) { () [self: Definition] -> untyped } -> Definition
+
+  # : () -> Hash[String | Symbol, Definition]
+  def self.registry: () -> Hash[String | Symbol, Definition]
+
+  # : (String | Symbol name) -> Definition
+  def self.[]: (String | Symbol name) -> Definition
+
+  # Days and hours the tick rule jumps to: the edges of a day in each zone,
+  # month ends, and the 2026 daylight-saving changes.
+  # Mid-day times too: with only day edges, an action that needs opening
+  # hours was refused at every draw.
+  BOUNDARY_TIMES: Array[[ Integer, Integer, Integer ]]
+
+  # The other ways to write the same instant, for the offset replay.
+  OFFSETS: Array[String]
+
+  ZONES_FOR_DAY_EDGES: Array[String]
+
+  TEXTS: Array[String]
+
+  # What an action body sees as self: the world helpers and an HTTP session.
+  class Context
+    include ActiveSupport::Testing::TimeHelpers
+
+    include FactoryBot::Syntax::Methods
+
+    attr_reader definition: Definition
+
+    attr_accessor sizer: (^(Symbol, Range[Integer]) -> Integer?)?
+
+    # How many of a record the world starts with, drawn per case (and shrunk).
+    # : (Symbol name, Range[Integer] range) -> Integer?
+    def world_size: (Symbol name, Range[Integer] range) -> Integer?
+
+    # : (Definition definition) -> void
+    def initialize: (Definition definition) -> void
+
+    # : () -> untyped
+    def http: () -> untyped
+
+    # : (Symbol pool) -> Array[untyped]
+    def records: (Symbol pool) -> Array[untyped]
+
+    # : (Symbol name) -> bool
+    def pool?: (Symbol name) -> bool
+  end
+
+  # Draws parameter values (or reads them back from a log on replay).
+  class Draw
+    @tc: untyped
+
+    # : (untyped tc) -> void
+    def initialize: (untyped tc) -> void
+
+    # : (Integer size) -> Integer
+    def index: (Integer size) -> Integer
+
+    # : (Range[Integer] range) -> Integer
+    def int: (Range[Integer] range) -> Integer
+
+    # : (bool ok) -> void
+    def assume: (bool ok) -> void
+  end
+
+  class Runner
+    @dates_sql: String
+
+    @tracked: Hash[untyped, untyped]
+
+    @clock: untyped
+
+    @ctx: Context
+
+    @definition: Definition
+
+    type choice = Hash[Symbol, untyped]
+
+    type effect = { accepted: bool, outcome: untyped, rows: Hash[String, Array[Hash[String, untyped]]] }
+
+    attr_reader log: Array[entry]
+
+    # : (Definition definition) -> void
+    def initialize: (Definition definition) -> void
+
+    # Builds the world. +sizes+ replays the world sizes a log recorded; +draw+
+    # draws them; with neither, each size is its largest.
+    # : (?sizes: Array[Integer]?, ?draw: _Draw?) -> void
+    def reset!: (?sizes: Array[Integer]?, ?draw: _Draw?) -> void
+
+    # Resolves an action's declared params with +draw+ (index into a pool, or
+    # an integer), returning both the recorded choice and the value.
+    # : (Action action, _Draw draw) -> choice
+    def choose: (Action action, _Draw draw) -> choice
+
+    # +offset+ writes every :local_time value as the same instant in another
+    # UTC offset ("Z", "-08:00", ...).
+    # : (Action action, choice choice, ?offset: String?) -> Hash[Symbol, untyped]
+    def resolve: (Action action, choice choice, ?offset: String?) -> Hash[Symbol, untyped]
+
+    # A wall-clock time in one of the zones, at a day edge, some days from now:
+    # the input a member in another time zone would send.
+    # : (choice choice) -> untyped
+    def local_time: (choice choice) -> untyped
+
+    # : (Action action, choice choice, ?offset: String?) -> String
+    def describe: (Action action, choice choice, ?offset: String?) -> String
+
+    # Runs the block and rolls back what it wrote: the rows, the id counters,
+    # and the state of the fakes, so the step after it runs as if it had not.
+    # The outer transaction is not joinable, so the app's own transactions
+    # become savepoints, as under transactional tests.
+    # : () { () -> untyped } -> untyped
+    def trial: () { () -> untyped } -> untyped
+
+    # What a step did, to compare two ways of running it: accepted or refused,
+    # and the rows of +tables+ (every table when nil) without ids, times and
+    # random tokens.
+    # : (untyped outcome, ?Array[String]? tables) -> effect
+    def effect: (untyped outcome, ?Array[String]? tables) -> effect
+
+    NOISE_COLUMN: Regexp
+
+    # The same step with each :local_time param written as the same instant
+    # in another UTC offset must answer and write the same.
+    # : (Symbol name, choice choice, String offset) -> void
+    def offset_step: (Symbol name, choice choice, String offset) -> void
+
+    # A desk action and an API action that make the same record, from the
+    # same state with the same inputs, must agree.
+    # : (Symbol first_name, choice first_choice, Symbol second_name, choice second_choice, String table) -> void
+    def twins_step: (Symbol first_name, choice first_choice, Symbol second_name, choice second_choice, String table) -> void
+
+    # The second door's inputs: a param of the same name and kind, or the one
+    # param of the first that draws from the same pool, takes the same choice.
+    # A pool param with no match (the API's caller) takes the owner of a
+    # record the first door was given: the API acts as that record's member.
+    # : (Action first, choice first_choice, Action second, _Draw draw) -> choice
+    def same_inputs: (Action first, choice first_choice, Action second, _Draw draw) -> choice
+
+    # : (untyped spec, untyped value, Hash[Symbol, untyped] values) -> Integer?
+    def choice_for: (untyped spec, untyped value, Hash[Symbol, untyped] values) -> Integer?
+
+    # : (String what, effect a, effect b, String | Symbol a_name, String | Symbol b_name, ?outcome: bool, ?noise: Set[String]) -> void
+    def compare!: (String what, effect a, effect b, String | Symbol a_name, String | Symbol b_name, ?outcome: bool, ?noise: Set[String]) -> void
+
+    # : (Symbol name, choice choice, ?failure: Symbol?, ?again: bool) -> void
+    def step: (Symbol name, choice choice, ?failure: Symbol?, ?again: bool) -> void
+
+    # Steps the app accepted, which a double click or a retried request
+    # would send once more.
+    # A step whose record an action since destroyed (a withdrawal of the
+    # one parcel) has nothing left to send again: its pool index now points
+    # past the end.
+    # : () -> Array[entry]
+    def accepted_steps: () -> Array[entry]
+
+    # Dates and times the app stored (due dates, deadlines, pauses), where a
+    # day-boundary bug would show.
+    # One query over every date column: a query per column on each tick
+    # took a quarter of the run.
+    # : () -> Array[Date]
+    def stored_dates: () -> Array[Date]
+
+    # : (choice choice) -> void
+    def tick: (choice choice) -> void
+
+    # Runs +first+ until it reaches its pause point, then runs +second+ to the
+    # end (or until it blocks on a database lock), then lets +first+ finish.
+    # : (Symbol first_name, choice first_choice, Symbol second_name, choice second_choice) -> void
+    def interleave: (Symbol first_name, choice first_choice, Symbol second_name, choice second_choice) -> void
+
+    # A job held after its batch load races only on the rows it loaded, so a
+    # second action's record of the same class is moved onto one of them
+    # (the first loaded, so a replay picks the same row).
+    # : (Hash[Symbol, untyped] args, Array[[untyped, untyped, untyped]] loaded) -> Hash[Symbol, untyped]
+    def onto_loaded: (Hash[Symbol, untyped] args, Array[[ untyped, untyped, untyped ]] loaded) -> Hash[Symbol, untyped]
+
+    # : (Array[[untyped, untyped, untyped]] loaded) -> Hash[[untyped, untyped], [String, untyped]?]
+    def current_states: (Array[[ untyped, untyped, untyped ]] loaded) -> Hash[[ untyped, untyped ], [ String, untyped ]?]
+
+    # A job that loaded a row before another action set its status must not
+    # write a status over it that the job's own query would not have picked
+    # the row for: that is the job acting on what it read, not on what is
+    # there. The query is asked inside a rolled-back trial, with the row put
+    # back at the status the other action set.
+    # : (Symbol job, Symbol other, Hash[Symbol, untyped] gate, Hash[[untyped, untyped], [String, untyped]?] between, untyped other_outcome) -> void
+    def stale_overwrite!: (Symbol job, Symbol other, Hash[Symbol, untyped] gate, Hash[[ untyped, untyped ], [ String, untyped ]?] between, untyped other_outcome) -> void
+
+    # : (Action action, choice choice) -> String
+    def perform: (Action action, choice choice) -> String
+
+    # : (Action action, Hash[Symbol, untyped] args) -> String
+    def perform_with: (Action action, Hash[Symbol, untyped] args) -> String
+
+    # : () -> untyped
+    def invalid_record: () -> untyped
+
+    # : [T] () { () -> T } -> T
+    def at_clock: [T] () { () -> T } -> T
+
+    # : (String where) -> void
+    def check_invariants: (String where) -> void
+
+    # Every row of every table, minus the columns the definition ignores, so
+    # two runs of the same steps can be compared.
+    # Rows that leave +from+ for one of +to+ leave it in the order they
+    # entered it, as this run saw them enter (not as a column says). Only rows
+    # alike in every column but ids and times are compared: any other
+    # column (a party size, a pause date) can be a reason to skip a row.
+    # : (untyped model, from: String, to: String | Array[String], ?group: (String | Symbol)?) -> (true | String)
+    def order_kept: (untyped model, from: String, to: String | Array[String], ?group: (String | Symbol)?) -> (true | String)
+
+    # : (?Array[String]? only) -> Hash[String, Array[Hash[String, untyped]]]
+    def snapshot: (?Array[String]? only) -> Hash[String, Array[Hash[String, untyped]]]
+
+    # : (Array[entry] entries) -> Array[entry]
+    def replay: (Array[entry] entries) -> Array[entry]
+  end
+
+  # : (Definition definition, Runner runner) -> Class
+  def self.machine_for: (Definition definition, Runner runner) -> Class
+
+  # Blocks every definition runs first: the invariants and refusals that
+  # hold in every area, written once in spec/sequences/invariants.rb.
+  COLLISION: Regexp
+
+  TURNED_AWAY: Regexp
+
+  # : (untyped outcome) -> bool
+  def self.turned_away?: (untyped outcome) -> bool
+
+  # : (Exception error) -> bool
+  def self.collision?: (Exception error) -> bool
+
+  # : () -> Array[untyped]
+  def self.shared: () -> Array[untyped]
+
+  # : () { () -> untyped } -> Array[untyped]
+  def self.everywhere: () { () -> untyped } -> Array[untyped]
+
+  # The RSpec entry point: generate sequences, shrink a failure, and fail the
+  # example with the shortest sequence as a pasteable spec. SEQ_SEEDS=1,2,3
+  # runs one seed after another and stops at the first failure.
+  # : (Definition definition, **untyped opts) -> untyped
+  def self.explore: (Definition definition, **untyped opts) -> untyped
+
+  # : (Definition definition, ?test_cases: Integer, ?step_count: Integer, ?seed: Integer?) -> String
+  def self.explore_cases: (Definition definition, ?test_cases: Integer, ?step_count: Integer, ?seed: Integer?) -> String
+
+  # A behavior diff from inputs, not from changed methods: every ordering of
+  # the area's actions up to SEQ_OBSERVE_LENGTH (3) steps, as many as
+  # SEQ_OBSERVE_CAP (240) allows, each from the same world with arguments
+  # drawn from a seed of its own. Each step writes one line: how it ended,
+  # the rows it added, changed or removed (by attributes, no ids or times),
+  # and the outside fakes whose state it changed. Run on base and on head,
+  # the two files differ exactly where behavior does; nothing here judges.
+  OBSERVE_NOISE: Regexp
+
+  # : (Definition definition, out: String) -> void
+  def self.observe: (Definition definition, out: String) -> void
+
+  # object id => [class name, state]. Keyed by object, not by class: fakes
+  # of earlier cases stay in ObjectSpace until a GC, so a class key picked
+  # an instance by heap order and the same step differed between two runs.
+  # : () -> Hash[Integer, [String?, String]]
+  def self.outside_digest: () -> Hash[Integer, [ String?, String ]]
+
+  # table => {"added" => [...], "changed" => [...], "removed" => [...]}, rows
+  # by their non-volatile columns; ids appear only as the row they name.
+  # : (Hash[String, Array[Hash[String, untyped]]] before, Hash[String, Array[Hash[String, untyped]]] after) -> Hash[String, Hash[String, Array[untyped]]]
+  def self.row_changes: (Hash[String, Array[Hash[String, untyped]]] before, Hash[String, Array[Hash[String, untyped]]] after) -> Hash[String, Hash[String, Array[untyped]]]
+
+  # : (Definition definition, Integer test_cases, Integer step_count, Integer seed) -> Hash[Symbol, untyped]
+  def self.explore_seed: (Definition definition, Integer test_cases, Integer step_count, Integer seed) -> Hash[Symbol, untyped]
+
+  # : (Definition definition, untyped tc, Integer step_count, Set[String] noise) -> void
+  def self.run_case: (Definition definition, untyped tc, Integer step_count, Set[String] noise) -> void
+
+  # What a clean verdict has to have reached: every action, its offset
+  # replay, and each pair of doors.
+  # : (Definition definition) -> Array[Symbol]
+  def self.checks: (Definition definition) -> Array[Symbol]
+
+  # For a drafted invariant: see Runner#order_kept.
+  # : (untyped model, **untyped options) -> (true | String)
+  def self.order_kept: (untyped model, **untyped options) -> (true | String)
+
+  # : (Symbol? action, Module klass) -> void
+  def self.reached_outside_call: (Symbol? action, Module klass) -> void
+
+  # : () -> Set[Symbol]
+  def self.outside_callers: () -> Set[Symbol]
+
+  # : () -> Hash[Symbol, Set[Module]]
+  def self.outside_classes: () -> Hash[Symbol, Set[Module]]
+
+  # What the run reached, so a clean result says what it covered: an action
+  # that was only ever refused, or never drawn, checked nothing.
+  # : (Symbol name, untyped outcome) -> void
+  def self.tally: (Symbol name, untyped outcome) -> void
+
+  # : (untyped outcome) -> String
+  def self.kind: (untyped outcome) -> String
+
+  # Plain random draws for the probe: no shrinking, no Hegel.
+  class RandomDraw
+    @random: Random
+
+    # : (Random random) -> void
+    def initialize: (Random random) -> void
+
+    # : (Integer size) -> Integer
+    def index: (Integer size) -> Integer
+
+    # : (Range[Integer] range) -> Integer
+    def int: (Range[Integer] range) -> Integer
+
+    # : (bool ok) -> bool
+    def assume: (bool ok) -> bool
+  end
+
+  # A random walk over every action with no invariants: the tables each
+  # action writes, the outside services it calls, and how it ends. propose.rb
+  # groups actions into areas by it.
+  # : (Definition definition, ?walks: Integer, ?steps: Integer, ?seed: Integer) -> Hash[Symbol, Hash[Symbol, untyped]]
+  def self.probe: (Definition definition, ?walks: Integer, ?steps: Integer, ?seed: Integer) -> Hash[Symbol, Hash[Symbol, untyped]]
+
+  # : () -> String
+  def self.coverage_report: () -> String
+
+  # : (Array[entry] log) -> Array[Integer]
+  def self.world_sizes: (Array[entry] log) -> Array[Integer]
+
+  # The fakes are plain objects that remember charges and failures armed; a
+  # trial's rollback must undo those too.
+  # : () -> [Array[untyped], Array[untyped]]
+  def self.save_outside_state: () -> [ Array[untyped], Array[untyped] ]
+
+  # : (untyped) -> void
+  def self.restore_outside_state: (untyped) -> void
+
+  # : () -> bool
+  def self.postgres?: () -> bool
+
+  # Only PostgreSQL keeps id counters outside the transaction a trial rolls
+  # back; SQLite's sqlite_sequence is a table, rolled back with the rows.
+  # : () -> String
+  def self.sequence_state_sql: () -> String
+
+  # : () -> Set[Module]
+  def self.outside_classes_declared: () -> Set[Module]
+
+  # : (Definition definition, Array[entry] entries) -> Array[entry]
+  def self.replay: (Definition definition, Array[entry] entries) -> Array[entry]
+
+  # : () -> untyped
+  def self.reset_database: () -> untyped
+
+  # A 404 or 422 renders the plain error page, not the developer page:
+  # building that page (source extracts, error highlight) took a third of
+  # the run. The status the action answers is unchanged.
+  # : () -> false
+  def self.quiet_errors: () -> false
+
+  # Empties every table and restarts its ids, so two runs of the same steps
+  # get the same ids. DELETE in foreign-key order (children first) took 1 ms
+  # on this app's few rows where TRUNCATE ... RESTART IDENTITY took 72 ms.
+  # A schema whose keys form a cycle falls back to TRUNCATE. SQLite has no
+  # TRUNCATE and no sequences: DELETE with the foreign keys off, then
+  # sqlite_sequence, which holds the ids to restart.
+  # : () -> untyped
+  def self.empty_tables: () -> untyped
+
+  # : (untyped conn) -> untyped
+  def self.empty_tables_without_truncate: (untyped conn) -> untyped
+
+  # : [T] (String zone) { () -> T } -> T
+  def self.with_zone: [T] (String zone) { () -> T } -> T
+
+  # : (Definition definition, Array[entry] log, String zone) -> Hash[String, Array[Hash[String, untyped]]]
+  def self.replay_snapshot: (Definition definition, Array[entry] log, String zone) -> Hash[String, Array[Hash[String, untyped]]]
+
+  # : (Hash[String, Array[Hash[String, untyped]]] a, Hash[String, Array[Hash[String, untyped]]] b, Set[String] noise) -> Array[{ column: String, text: String }]
+  def self.diff: (Hash[String, Array[Hash[String, untyped]]] a, Hash[String, Array[Hash[String, untyped]]] b, Set[String] noise) -> Array[{ column: String, text: String }]
+
+  # Last in the module: rbs-inline reads `module_function` as applying to
+  # every method after it in the file.
+  module Report
+    # : (Array[entry] log) -> String
+    def self?.narrative: (Array[entry] log) -> String
+
+    # : (Definition definition, Array[entry] log) -> String
+    def self?.pasteable: (Definition definition, Array[entry] log) -> String
+  end
+end

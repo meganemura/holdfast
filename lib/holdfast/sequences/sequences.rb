@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 # Runs generated sequences of an app's entry points
 # against the app's real test database (PostgreSQL or SQLite): random orders (shrunk by Hegel), two actions
 # interleaved at a named pause point, and the same sequence replayed under
@@ -12,11 +14,33 @@ module Sequences
 
   # Seconds shrinking may take after the first failure. A two-step repro
   # found in a second spent the rest of a 150 s area shrinking the world.
-  SHRINK_SECONDS = Integer(ENV.fetch("SEQ_SHRINK_SECONDS", "60"))
+  SHRINK_SECONDS = Integer(ENV.fetch("SEQ_SHRINK_SECONDS", "60")) #: Integer
+
+  # @rbs!
+  #   type entry = Hash[Symbol, untyped]
+  #   interface _Draw
+  #     def index: (Integer size) -> Integer
+  #     def int: (Range[Integer] range) -> Integer
+  #     def assume: (bool ok) -> untyped
+  #   end
+  #   self.@network_calls: Hash[String, Array[String]]
+  #   self.@registry: Hash[String | Symbol, Definition]
+  #   self.@first_failure: Failure?
+  #   self.@tallies: Hash[Symbol, Hash[String, Integer]]?
+  #   self.@examples: Hash[String, Hash[String, Integer]]?
+  #   self.@shared: Array[untyped]
+  #   self.@outside_callers: Set[Symbol]
+  #   self.@outside_classes: Hash[Symbol, Set[Module]]
+  #   self.@outside_classes_declared: Set[Module]
+  #   self.@sequence_state_sql: String
+  #   self.@empty_sql: String
+  #   self.@empty_statements: Array[String]
 
   class Failure < StandardError
-    attr_reader :log, :definition
+    attr_reader :log #: Array[entry]
+    attr_reader :definition #: Definition
 
+    #: (String message, log: Array[entry], definition: Definition) -> void
     def initialize(message, log:, definition:)
       @log = log.map(&:dup)
       @definition = definition
@@ -25,6 +49,7 @@ module Sequences
 
     # The log quotes request params and response text, which can arrive as
     # binary; a message that raises on its own encoding hides the failure.
+    #: () -> String
     def message
       [super, Report.narrative(@log), Report.pasteable(@definition, @log)].map { _1.to_s.dup.force_encoding(Encoding::UTF_8).scrub }.join("\n\n")
     end
@@ -41,10 +66,12 @@ module Sequences
   # app, and a write through it would reach a real system.
   class RealNetwork < StandardError; end
 
-  LOOPBACK = /\A(localhost|127\.\d+\.\d+\.\d+|::1|0\.0\.0\.0)\z/
+  LOOPBACK = /\A(localhost|127\.\d+\.\d+\.\d+|::1|0\.0\.0\.0)\z/ #: Regexp
 
+  #: () -> Hash[String, Array[String]]
   def self.network_calls = (@network_calls ||= {})
 
+  #: (untyped host, untyped port) -> void
   def self.real_network!(host, port)
     return if host.nil? || LOOPBACK.match?(host.to_s)
 
@@ -53,20 +80,25 @@ module Sequences
     raise RealNetwork, "real network call to #{where}"
   end
 
+  # @rbs module-self TCPSocket
   module NetworkGate
+    #: (untyped host, untyped port, *untyped rest, **untyped kw) -> void
     def initialize(host, port, *rest, **kw)
       Sequences.real_network!(host, port)
       super
     end
   end
 
+  # @rbs module-self singleton(Socket)
   module SocketGate
+    #: (untyped host, untyped port, *untyped rest, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
     def tcp(host, port, *rest, **kw, &blk)
       Sequences.real_network!(host, port)
       super
     end
   end
 
+  #: () -> void
   def self.refuse_network!
     require "socket"
     TCPSocket.prepend(NetworkGate) unless TCPSocket <= NetworkGate
@@ -76,10 +108,13 @@ module Sequences
   # A pause point is a method on a fake (or any class) where an action can be
   # held while another action runs.
   module Pause
+    # @rbs self.@points: Hash[[Symbol, Module, Symbol], bool]
+
     @points = {}
     class << self
-      attr_reader :points
+      attr_reader :points #: Hash[[Symbol, Module, Symbol], bool]
 
+      #: (Symbol name, Module klass, Symbol method_name) -> untyped
       def define(name, klass, method_name)
         return if @points.key?([name, klass, method_name])
 
@@ -104,10 +139,12 @@ module Sequences
   # `pause_at: :batch_load` holds a job right after its first query that
   # returns rows (a find_each batch, a `to_a`), before it touches any of them:
   # the window where a desk action changes a row the job already holds.
+  # @rbs module-self ActiveRecord::Relation
   module BatchPause
     # Only the outermost load pauses: `includes(:copy)` loads the copies
     # inside the transfers' load, and holding there held the job on the
     # copies it preloads, not on the rows it acts on.
+    #: () -> Array[untyped]
     def records
       depth = Thread.current[:sequences_load_depth].to_i
       Thread.current[:sequences_load_depth] = depth + 1
@@ -129,22 +166,59 @@ module Sequences
   end
   ActiveRecord::Relation.prepend(BatchPause) if defined?(ActiveRecord::Relation)
 
-  STATE_COLUMNS = %w[status state].freeze
+  STATE_COLUMNS = %w[status state].freeze #: Array[String]
+  #: (untyped record) -> [String, untyped]?
   def self.state_of(record) = STATE_COLUMNS.find { record.has_attribute?(it) }&.then { [it, record[it]] }
 
+  # @rbs skip
   Action = Struct.new(:name, :params, :pause_at, :weight, :block, :failures, :fresh, keyword_init: true)
+  # @rbs!
+  #   class Action < Struct[untyped]
+  #     attr_accessor name: Symbol
+  #     attr_accessor params: Hash[Symbol, untyped]
+  #     attr_accessor pause_at: Symbol?
+  #     attr_accessor weight: Numeric
+  #     attr_accessor block: untyped
+  #     attr_accessor failures: Array[Symbol]
+  #     attr_accessor fresh: Array[Symbol]
+  #     def self.new: (name: Symbol, params: Hash[Symbol, untyped], pause_at: Symbol?, weight: Numeric, block: untyped, failures: Array[Symbol], fresh: Array[Symbol]) -> Action
+  #   end
 
   # An end drawn from its start: `ends_at: after(:starts_at, minutes: [...])`.
   # Drawn apart, nearly every pair broke a duration rule and the action was
   # only ever refused.
-  After = Data.define(:from, :minutes) do
+  After = Data.define(
+    :from, #: Symbol
+    :minutes #: Array[Integer]
+  )
+
+  class After
+    #: () -> String
     def inspect = "after(:#{from}, minutes: #{minutes.inspect})"
   end
 
+  # The blocks an area's definition passes (setup, pools, invariants,
+  # failures) run with another self and take what the area wrote, so they
+  # stay untyped.
   class Definition
-    attr_reader :name, :actions, :invariants, :refusal_classes, :pools, :zones, :clock_start, :ignore_columns, :tick_weight,
-                :skipped, :failures, :twin_pairs
+    # @rbs @setup: untyped
+    # @rbs @helpers: Module
+    # @rbs @default_pause: Symbol?
 
+    attr_reader :name #: String | Symbol
+    attr_reader :actions #: Hash[Symbol, Action]
+    attr_reader :invariants #: Hash[Symbol, untyped]
+    attr_reader :refusal_classes #: Array[Module]
+    attr_reader :pools #: Hash[Symbol, untyped]
+    attr_reader :zones #: Array[String]
+    attr_reader :clock_start #: Time?
+    attr_reader :ignore_columns #: Array[String]
+    attr_reader :tick_weight #: Numeric?
+    attr_reader :skipped #: Hash[Symbol, String]
+    attr_reader :failures #: Hash[Symbol, untyped]
+    attr_reader :twin_pairs #: Array[[Symbol, Symbol, String]]
+
+    #: (String | Symbol name, ?shared: bool) -> void
     def initialize(name, shared: true)
       @name = name
       @actions = {}
@@ -161,13 +235,18 @@ module Sequences
       Sequences.shared.each { instance_exec(&it) } if shared
     end
 
+    #: () { () -> untyped } -> untyped
     def setup(&block) = (@setup = block)
+    #: (Context ctx) -> untyped
     def run_setup(ctx) = ctx.instance_exec(&@setup)
+    #: (Symbol name) { () -> untyped } -> untyped
     def pool(name, &query) = (@pools[name] = query)
+    #: () ?{ (Module) [self: Module] -> untyped } -> untyped
     def helpers(&block) = block ? @helpers.module_eval(&block) : @helpers
 
     # Every public method of these classes (the fakes of outside services) is
     # a pause point, so any action can be held at its first outside call.
+    #: (*Module classes) -> Symbol
     def outside_calls(*classes)
       Sequences.outside_classes_declared.merge(classes)
       classes.each do |klass|
@@ -175,18 +254,24 @@ module Sequences
       end
       @default_pause = :outside_call
     end
+    #: (*Module classes) -> Array[Module]
     def refusals(*classes) = @refusal_classes.concat(classes)
+    #: (Symbol name) { () -> untyped } -> untyped
     def invariant(name, &block) = (@invariants[name] = block)
+    #: (*(String | Symbol) columns) -> Array[String]
     def ignore(*columns) = @ignore_columns.concat(columns.map(&:to_s))
+    #: (Symbol from, minutes: Array[Integer]) -> After
     def after(from, minutes:) = After.new(from:, minutes:)
 
     # Two doors to one effect (a desk route and an API endpoint): run both
     # from the same state with the same inputs; the outcome and the rows of
     # +table+ must match.
+    #: (Symbol first, Symbol second, table: String | Symbol) -> Array[[Symbol, Symbol, String]]
     def twins(first, second, table:) = @twin_pairs << [first, second, table.to_s]
 
     # Starts the clock and turns on the boundary-biased tick rule and the
     # process time-zone replay.
+    #: (start: untyped, ?zones: Array[String], ?weight: Numeric) -> Numeric
     def clock(start:, zones: [], weight: 3.0)
       @clock_start = Time.utc(*start)
       @zones = zones
@@ -195,6 +280,7 @@ module Sequences
 
 # An action with a :TODO param does not run; the report lists it with
 # the params to fill, and the rest of the area still runs.
+#: (Symbol name, ?pause_at: Symbol?, ?weight: Numeric, ?failures: Array[Symbol], ?fresh: Array[Symbol], **untyped params) ?{ (?) -> untyped } -> untyped
 def action(name, pause_at: nil, weight: 1.0, failures: [], fresh: [], **params, &block)
   todo = params.select { |_, spec| spec == :TODO }.keys
   return @skipped[name] = "replace :TODO for #{todo.join(", ")}" if todo.any?
@@ -204,62 +290,78 @@ def action(name, pause_at: nil, weight: 1.0, failures: [], fresh: [], **params, 
 
 # How an outside service fails: the block arms the fake. An action that
 # lists the failure runs once more as its own step with the fake armed.
+#: (Symbol name) { () -> untyped } -> untyped
 def failure(name, &block) = (@failures[name] = block)
 
+    #: () -> Array[Action]
     def pausable = @actions.values.select { it.pause_at || @default_pause }
+    #: (Action action) -> Symbol?
     def pause_point(action) = action.pause_at || @default_pause
   end
 
+#: (String | Symbol name) { () [self: Definition] -> untyped } -> Definition
 def self.define(name, &block)
   definition = Definition.new(name)
   definition.instance_exec(&block)
   registry[name] = definition
 end
 
+#: () -> Hash[String | Symbol, Definition]
 def self.registry = (@registry ||= {})
+#: (String | Symbol name) -> Definition
 def self.[](name) = registry.fetch(name)
 
   # Days and hours the tick rule jumps to: the edges of a day in each zone,
   # month ends, and the 2026 daylight-saving changes.
   # Mid-day times too: with only day edges, an action that needs opening
   # hours was refused at every draw.
-  BOUNDARY_TIMES = [[0, 0, 0], [0, 0, 1], [23, 59, 59], [12, 0, 0], [1, 30, 0], [9, 30, 0], [15, 0, 0]].freeze
+  BOUNDARY_TIMES = [[0, 0, 0], [0, 0, 1], [23, 59, 59], [12, 0, 0], [1, 30, 0], [9, 30, 0], [15, 0, 0]].freeze #: Array[[Integer, Integer, Integer]]
   # The other ways to write the same instant, for the offset replay.
-  OFFSETS = ["Z", "-08:00", "+13:00"].freeze
-  ZONES_FOR_DAY_EDGES = ["UTC", "Pacific/Auckland", "America/Los_Angeles", "Asia/Tokyo"].freeze
-  TEXTS = ["Sample text", "", "Ä 漢字 #{"x" * 40}"].freeze
+  OFFSETS = ["Z", "-08:00", "+13:00"].freeze #: Array[String]
+  ZONES_FOR_DAY_EDGES = ["UTC", "Pacific/Auckland", "America/Los_Angeles", "Asia/Tokyo"].freeze #: Array[String]
+  TEXTS = ["Sample text", "", "Ä 漢字 #{"x" * 40}"].freeze #: Array[String]
 
   # What an action body sees as self: the world helpers and an HTTP session.
   class Context
     include ActiveSupport::Testing::TimeHelpers
     include FactoryBot::Syntax::Methods
 
-    attr_reader :definition
-    attr_accessor :sizer
+    attr_reader :definition #: Definition
+    attr_accessor :sizer #: (^(Symbol, Range[Integer]) -> Integer?)?
 
     # How many of a record the world starts with, drawn per case (and shrunk).
-    def world_size(name, range) = @sizer ? @sizer.call(name, range) : range.max
+    #: (Symbol name, Range[Integer] range) -> Integer?
+    def world_size(name, range) = (sizer = @sizer) ? sizer.call(name, range) : range.max
 
+    #: (Definition definition) -> void
     def initialize(definition)
       @definition = definition
       extend(definition.helpers)
     end
 
+    #: () -> untyped
     def http
       Thread.current[:sequences_http] ||= ActionDispatch::Integration::Session.new(Rails.application)
     end
 
+    #: (Symbol pool) -> Array[untyped]
     def records(pool) = @definition.pools.fetch(pool).call.to_a
+    #: (Symbol name) -> bool
     def pool?(name) = @definition.pools.key?(name)
 
     # A factory call that fails in `setup` names itself and its line.
     %i[create create_list build].each do |factory_call|
       define_method(factory_call) do |*args, **kw, &blk|
+        # @type self: Context
         super(*args, **kw, &blk)
       rescue SetupError
         raise
       rescue StandardError => e
-        where = caller_locations.find { it.path.start_with?(Rails.root.to_s) && !it.path.start_with?(__dir__) && !it.path.include?("/spec/support/") }
+        where = caller_locations.find do
+          path = it.path #: String
+          here = __dir__ #: String
+          path.start_with?(Rails.root.to_s) && !path.start_with?(here) && !path.include?("/spec/support/")
+        end
         # A record's whole inspect pushed the error itself off the one line a
         # report shows, so a record is named by its class and id.
         show = ->(v) { v.is_a?(ActiveRecord::Base) ? "#<#{v.class.name} #{v.id || "new"}>" : v.inspect }
@@ -271,16 +373,33 @@ end
 
   # Draws parameter values (or reads them back from a log on replay).
   class Draw
+    # @rbs @tc: untyped
+
+    #: (untyped tc) -> void
     def initialize(tc) = (@tc = tc)
 
+    #: (Integer size) -> Integer
     def index(size) = int(0..size - 1)
+    #: (Range[Integer] range) -> Integer
     def int(range) = @tc.draw(Hegel::Generators::IntegerGenerator.new(min_value: range.min, max_value: range.max))
+    #: (bool ok) -> void
     def assume(ok) = @tc.assume(ok)
   end
 
   class Runner
-    attr_reader :log
+    # @rbs @definition: Definition
+    # @rbs @ctx: Context
+    # @rbs @clock: untyped
+    # @rbs @tracked: Hash[untyped, untyped]
+    # @rbs @dates_sql: String
 
+    # @rbs!
+    #   type choice = Hash[Symbol, untyped]
+    #   type effect = { accepted: bool, outcome: untyped, rows: Hash[String, Array[Hash[String, untyped]]] }
+
+    attr_reader :log #: Array[entry]
+
+    #: (Definition definition) -> void
     def initialize(definition)
       @definition = definition
       @ctx = Context.new(definition)
@@ -291,13 +410,14 @@ end
 
     # Builds the world. +sizes+ replays the world sizes a log recorded; +draw+
     # draws them; with neither, each size is its largest.
+    #: (?sizes: Array[Integer]?, ?draw: _Draw?) -> void
     def reset!(sizes: nil, draw: nil)
       Sequences.empty_tables
       FactoryBot.rewind_sequences if defined?(FactoryBot)
       queue = sizes&.dup
-      world = []
+      world = [] #: Array[[Symbol, Integer?]]
       @ctx.sizer = lambda do |name, range|
-        n = queue ? (queue.shift || range.min) : draw ? draw.int(range) : range.max
+        n = queue ? (queue.shift || range.min) : draw ? draw.int(range) : range.max #: Integer
         n.clamp(range.min, range.max).tap { world << [name, it] }
       end
       begin
@@ -305,7 +425,8 @@ end
       rescue SetupError
         raise
       rescue StandardError => e
-        where = e.backtrace.find { it.include?("/spec/") && !it.include?("/spec/support/") } || e.backtrace.first
+        trace = e.backtrace #: Array[String]
+        where = trace.find { it.include?("/spec/") && !it.include?("/spec/support/") } || trace.first #: String
         raise SetupError, "setup failed at #{where.sub("#{Rails.root}/", "")}: #{e.class}: #{e.message}"
       end
       @log = []
@@ -315,8 +436,9 @@ end
 
     # Resolves an action's declared params with +draw+ (index into a pool, or
     # an integer), returning both the recorded choice and the value.
+    #: (Action action, _Draw draw) -> choice
     def choose(action, draw)
-      choice = {}
+      choice = {} #: choice
       action.params.each do |key, spec|
         case spec
         when :local_time, :local_date
@@ -341,8 +463,10 @@ end
 
     # +offset+ writes every :local_time value as the same instant in another
     # UTC offset ("Z", "-08:00", ...).
+    #: (Action action, choice choice, ?offset: String?) -> Hash[Symbol, untyped]
     def resolve(action, choice, offset: nil)
-      action.params.each_with_object({}) do |(key, spec), out|
+      values = {} #: Hash[Symbol, untyped]
+      action.params.each_with_object(values) do |(key, spec), out|
         out[key] = case spec
                    when :local_time
                      time = local_time(choice[key])
@@ -361,6 +485,7 @@ end
 
     # A wall-clock time in one of the zones, at a day edge, some days from now:
     # the input a member in another time zone would send.
+    #: (choice choice) -> untyped
     def local_time(choice)
       zone = ActiveSupport::TimeZone[ZONES_FOR_DAY_EDGES.fetch(choice[:zone])]
       day = (@clock || Time.current).in_time_zone(zone).to_date + choice[:days]
@@ -368,6 +493,7 @@ end
       zone.local(day.year, day.month, day.day, h, m, sec)
     end
 
+    #: (Action action, choice choice, ?offset: String?) -> String
     def describe(action, choice, offset: nil)
       resolve(action, choice, offset:).map do |k, v|
         "#{k}=#{v.is_a?(ActiveRecord::Base) ? "#{v.class.name}##{v.id}" : v.respond_to?(:iso8601) && !v.is_a?(Date) ? v.iso8601 : v}"
@@ -378,9 +504,10 @@ end
     # and the state of the fakes, so the step after it runs as if it had not.
     # The outer transaction is not joinable, so the app's own transactions
     # become savepoints, as under transactional tests.
+    #: () { () -> untyped } -> untyped
     def trial
       saved = Sequences.save_outside_state
-      result = nil
+      result = nil #: untyped
       ActiveRecord::Base.transaction(joinable: false) do
         result = yield
         raise ActiveRecord::Rollback
@@ -393,6 +520,7 @@ end
     # What a step did, to compare two ways of running it: accepted or refused,
     # and the rows of +tables+ (every table when nil) without ids, times and
     # random tokens.
+    #: (untyped outcome, ?Array[String]? tables) -> effect
     def effect(outcome, tables = nil)
       rows = snapshot(tables).transform_values do |list|
         list.map { |row| row.reject { |col, _| col == "id" || col.match?(NOISE_COLUMN) } }
@@ -400,14 +528,15 @@ end
       { accepted: !Sequences.kind(outcome).match?(/refused|HTTP 4/), outcome:, rows: }
     end
 
-    NOISE_COLUMN = /(\A|_)(token|digest|uuid|nonce|secret|salt|key)\z|_at\z/
+    NOISE_COLUMN = /(\A|_)(token|digest|uuid|nonce|secret|salt|key)\z|_at\z/ #: Regexp
 
     # The same step with each :local_time param written as the same instant
     # in another UTC offset must answer and write the same.
+    #: (Symbol name, choice choice, String offset) -> void
     def offset_step(name, choice, offset)
       action = @definition.actions.fetch(name)
       label = "#{name}(#{describe(action, choice)}), then the same instant written as #{offset}: #{describe(action, choice, offset:)}"
-      entry = { step: :offset, args: { action: name, args: choice, offset: }, at: @clock&.iso8601, label: }
+      entry = { step: :offset, args: { action: name, args: choice, offset: }, at: @clock&.iso8601, label: } #: entry
       @log << entry
       at_clock do
         other = trial { effect(perform_with(action, resolve(action, choice, offset:))) }
@@ -421,12 +550,13 @@ end
 
     # A desk action and an API action that make the same record, from the
     # same state with the same inputs, must agree.
+    #: (Symbol first_name, choice first_choice, Symbol second_name, choice second_choice, String table) -> void
     def twins_step(first_name, first_choice, second_name, second_choice, table)
       first = @definition.actions.fetch(first_name)
       second = @definition.actions.fetch(second_name)
       label = "#{first_name}(#{describe(first, first_choice)}) vs #{second_name}(#{describe(second, second_choice)}) from the same state"
       entry = { step: :twins, args: { first: first_name, first_args: first_choice, second: second_name, second_args: second_choice, table: },
-                at: @clock&.iso8601, label: }
+                at: @clock&.iso8601, label: } #: entry
       @log << entry
       at_clock do
         one = trial { effect(perform(first, first_choice), [table]) }
@@ -481,6 +611,7 @@ end
     # param of the first that draws from the same pool, takes the same choice.
     # A pool param with no match (the API's caller) takes the owner of a
     # record the first door was given: the API acts as that record's member.
+    #: (Action first, choice first_choice, Action second, _Draw draw) -> choice
     def same_inputs(first, first_choice, second, draw)
       fresh = choose(second, draw)
       values = resolve(first, first_choice)
@@ -510,6 +641,7 @@ end
       end
     end
 
+    #: (untyped spec, untyped value, Hash[Symbol, untyped] values) -> Integer?
     def choice_for(spec, value, values)
       case spec
       when Range then value if value.is_a?(Integer) && spec.cover?(value)
@@ -520,6 +652,7 @@ end
       end
     end
 
+    #: (String what, effect a, effect b, String | Symbol a_name, String | Symbol b_name, ?outcome: bool, ?noise: Set[String]) -> void
     def compare!(what, a, b, a_name, b_name, outcome: true, noise: Set.new)
       if outcome && a[:accepted] != b[:accepted]
         raise Failure.new("#{what}: #{a_name} #{a[:accepted] ? "accepted" : "refused"} (#{a[:outcome]}), #{b_name} #{b[:accepted] ? "accepted" : "refused"} (#{b[:outcome]})",
@@ -532,9 +665,10 @@ end
                         log: @log, definition: @definition)
     end
 
+    #: (Symbol name, choice choice, ?failure: Symbol?, ?again: bool) -> void
     def step(name, choice, failure: nil, again: false)
       action = @definition.actions.fetch(name)
-      entry = { step: name, args: choice, at: @clock&.iso8601, label: describe(action, choice) }
+      entry = { step: name, args: choice, at: @clock&.iso8601, label: describe(action, choice) } #: entry
       entry.merge!(failure:, label: "[#{failure}] #{entry[:label]}") if failure
       entry[:label] = "again, as sent before: #{entry[:label]}" if again
       @log << entry
@@ -552,6 +686,7 @@ end
     # A step whose record an action since destroyed (a withdrawal of the
     # one parcel) has nothing left to send again: its pool index now points
     # past the end.
+    #: () -> Array[entry]
     def accepted_steps
       @log.select do |e|
         @definition.actions.key?(e[:step]) && e[:outcome] && !Sequences.kind(e[:outcome]).match?(/refused|HTTP 4/) &&
@@ -567,6 +702,7 @@ end
     # day-boundary bug would show.
     # One query over every date column: a query per column on each tick
     # took a quarter of the run.
+    #: () -> Array[Date]
     def stored_dates
       conn = ActiveRecord::Base.connection
       # SQLite reads CAST(... AS date) as a number (the year); date() is its day.
@@ -581,9 +717,10 @@ end
       conn.select_values(@dates_sql).map { it.respond_to?(:to_date) ? it.to_date : Date.parse(it.to_s) }.uniq.sort
     end
 
+    #: (choice choice) -> void
     def tick(choice)
       zone = ActiveSupport::TimeZone[ZONES_FOR_DAY_EDGES.fetch(choice[:zone])]
-      dates = choice[:stored] ? stored_dates : []
+      dates = choice[:stored] ? stored_dates : [] #: Array[Date]
       local = if dates.empty? then @clock.in_time_zone(zone).to_date + choice[:days]
               else dates.fetch(choice[:stored] % dates.size) + (choice[:days] % 3) - 1
               end
@@ -596,20 +733,21 @@ end
 
     # Runs +first+ until it reaches its pause point, then runs +second+ to the
     # end (or until it blocks on a database lock), then lets +first+ finish.
+    #: (Symbol first_name, choice first_choice, Symbol second_name, choice second_choice) -> void
     def interleave(first_name, first_choice, second_name, second_choice)
       first = @definition.actions.fetch(first_name)
       second = @definition.actions.fetch(second_name)
       entry = { step: :interleave, args: { first: first_name, first_args: first_choice, second: second_name, second_args: second_choice },
                 at: @clock&.iso8601,
-                label: "#{first_name}(#{describe(first, first_choice)}) paused at #{@definition.pause_point(first)}, then #{second_name}(#{describe(second, second_choice)})" }
+                label: "#{first_name}(#{describe(first, first_choice)}) paused at #{@definition.pause_point(first)}, then #{second_name}(#{describe(second, second_choice)})" } #: entry
       @log << entry
       $stderr.puts "  step #{entry[:step]} #{entry[:label]}" if ENV["SEQ_DEBUG"]
       # Records are resolved on the main thread, before either action runs.
       first_label, second_label = describe(first, first_choice), describe(second, second_choice)
       first_args = resolve(first, first_choice)
       second_args = resolve(second, second_choice)
-      gate = { point: @definition.pause_point(first), paused: Queue.new, go: Queue.new, passed: false }
-      outcomes = {}
+      gate = { point: @definition.pause_point(first), paused: Queue.new, go: Queue.new, passed: false } #: Hash[Symbol, untyped]
+      outcomes = {} #: Hash[Symbol, untyped]
       at_clock do
         t1 = Thread.new do
           Thread.current[:sequences_gate] = gate
@@ -645,14 +783,16 @@ end
     # A job held after its batch load races only on the rows it loaded, so a
     # second action's record of the same class is moved onto one of them
     # (the first loaded, so a replay picks the same row).
+    #: (Hash[Symbol, untyped] args, Array[[untyped, untyped, untyped]] loaded) -> Hash[Symbol, untyped]
     def onto_loaded(args, loaded)
       args.to_h do |key, value|
         row = value.is_a?(ActiveRecord::Base) && loaded.none? { |k, id, _| value.is_a?(k) && value.id == id } &&
-              loaded.find { |k, _, _| value.is_a?(k) }
+              loaded.find { |k, _, _| value.is_a?(k) } #: untyped
         [key, row ? row[0].unscoped.find_by(id: row[1]) || value : value]
       end
     end
 
+    #: (Array[[untyped, untyped, untyped]] loaded) -> Hash[[untyped, untyped], [String, untyped]?]
     def current_states(loaded)
       loaded.to_h { |klass, id, _| [[klass, id], klass.unscoped.find_by(id:)&.then { Sequences.state_of(it) }] }
     end
@@ -662,6 +802,7 @@ end
     # the row for: that is the job acting on what it read, not on what is
     # there. The query is asked inside a rolled-back trial, with the row put
     # back at the status the other action set.
+    #: (Symbol job, Symbol other, Hash[Symbol, untyped] gate, Hash[[untyped, untyped], [String, untyped]?] between, untyped other_outcome) -> void
     def stale_overwrite!(job, other, gate, between, other_outcome)
       return if Sequences.kind(other_outcome).match?(/refused|HTTP 4/)
 
@@ -673,7 +814,8 @@ end
         next if set.nil? || set == loaded || now == set
 
         picked = trial do
-          klass.unscoped.where(id:).update_all(column => set)
+          change = { column => set } #: Hash[untyped, untyped]
+          klass.unscoped.where(id:).update_all(change)
           gate[:relation].except(:limit, :offset, :order).where(id:).exists?
         end
         next if picked
@@ -684,8 +826,10 @@ end
       end
     end
 
+    #: (Action action, choice choice) -> String
     def perform(action, choice) = perform_with(action, resolve(action, choice))
 
+    #: (Action action, Hash[Symbol, untyped] args) -> String
     def perform_with(action, args)
       Thread.current[:sequences_action] = action.name
       result = begin
@@ -718,21 +862,25 @@ end
     rescue Failure
       raise
     rescue StandardError => e
-      raise Failure.new("#{action.name} raised #{e.class}: #{e.message}\n  #{e.backtrace.grep(%r{/app/}).first(3).join("\n  ")}", log: @log, definition: @definition)
+      trace = e.backtrace #: Array[String]
+      raise Failure.new("#{action.name} raised #{e.class}: #{e.message}\n  #{trace.grep(%r{/app/}).first(3).join("\n  ")}", log: @log, definition: @definition)
     end
 
+    #: () -> untyped
     def invalid_record
       controller = @ctx.http.controller or return nil
       controller.instance_variables.lazy.map { controller.instance_variable_get(it) }
                 .find { it.respond_to?(:errors) && it.errors.respond_to?(:full_messages) && it.errors.any? }
     end
 
+    #: [T] () { () -> T } -> T
     def at_clock(&block)
       return yield unless @clock
 
       @ctx.travel_to(@clock, &block)
     end
 
+    #: (String where) -> void
     def check_invariants(where)
       Thread.current[:sequences_runner] = self
       @definition.invariants.each do |name, block|
@@ -749,6 +897,7 @@ end
     # entered it, as this run saw them enter (not as a column says). Only rows
     # alike in every column but ids and times are compared: any other
     # column (a party size, a pause date) can be a reason to skip a row.
+    #: (untyped model, from: String, to: String | Array[String], ?group: (String | Symbol)?) -> (true | String)
     def order_kept(model, from:, to:, group: nil)
       table = model.table_name
       before = @tracked[table]
@@ -777,6 +926,7 @@ end
       broken.empty? || broken.join("; ")
     end
 
+    #: (?Array[String]? only) -> Hash[String, Array[Hash[String, untyped]]]
     def snapshot(only = nil)
       conn = ActiveRecord::Base.connection
       (only || (conn.tables - %w[schema_migrations ar_internal_metadata])).sort.to_h do |table|
@@ -785,6 +935,7 @@ end
       end
     end
 
+    #: (Array[entry] entries) -> Array[entry]
     def replay(entries)
       entries.each do |entry|
         @clock = Time.iso8601(entry[:at]) if entry[:at] && @clock
@@ -804,32 +955,10 @@ end
     end
   end
 
-  module Report
-    module_function
-
-    def narrative(log)
-      lines = log.each_with_index.map do |e, i|
-        "  #{i + 1}. [#{e[:at]}] #{e[:step]} #{e[:label]}#{"  => #{e[:outcome]}" if e[:outcome] && e[:outcome] != "ok"}"
-      end
-      "Shortest sequence found:\n#{lines.join("\n")}"
-    end
-
-    def pasteable(definition, log)
-      steps = log.map { |e| "      #{e.slice(:step, :args, :at, :failure).inspect}," }
-      <<~RUBY
-        Paste into the target's sequence spec to keep this case:
-
-          it "keeps the case #{definition.name} found" do
-            Sequences.replay(Sequences[#{definition.name.inspect}], [
-        #{steps.join("\n")}
-            ])
-          end
-      RUBY
-    end
-  end
-
+  #: (Definition definition, Runner runner) -> Class
   def self.machine_for(definition, runner)
     Class.new(Hegel::StateMachine) do
+      # @type self: singleton(Hegel::StateMachine)
       definition.actions.each_value do |action|
         rule(action.name, weight: action.weight) do |tc|
           runner.step(action.name, runner.choose(action, Draw.new(tc)))
@@ -869,7 +998,8 @@ end
         runner.step(sent[:step], sent[:args], failure: sent[:failure], again: true)
       end
       if definition.clock_start
-        rule(:tick, weight: definition.tick_weight) do |tc|
+        weight = definition.tick_weight #: Numeric
+        rule(:tick, weight:) do |tc|
           draw = Draw.new(tc)
           stored = draw.int(0..1).zero? ? nil : draw.int(1..1000)
           runner.tick(zone: draw.int(0..ZONES_FOR_DAY_EDGES.size - 1), days: draw.int(0..40),
@@ -905,29 +1035,36 @@ end
 
   # Blocks every definition runs first: the invariants and refusals that
   # hold in every area, written once in spec/sequences/invariants.rb.
-  COLLISION = /ExclusionViolation|UniqueViolation|RecordNotUnique|conflicting key value|duplicate key/
-  TURNED_AWAY = /HTTP 40[13]|sign in|log in|signed in|unauthori[sz]ed|forbidden/i
+  COLLISION = /ExclusionViolation|UniqueViolation|RecordNotUnique|conflicting key value|duplicate key/ #: Regexp
+  TURNED_AWAY = /HTTP 40[13]|sign in|log in|signed in|unauthori[sz]ed|forbidden/i #: Regexp
+  #: (untyped outcome) -> bool
   def self.turned_away?(outcome) = outcome.to_s.match?(TURNED_AWAY)
 
+  #: (Exception error) -> bool
   def self.collision?(error) = error.message.match?(COLLISION)
 
+  #: () -> Array[untyped]
   def self.shared = (@shared ||= [])
+  #: () { () -> untyped } -> Array[untyped]
   def self.everywhere(&block) = shared << block
 
   # The RSpec entry point: generate sequences, shrink a failure, and fail the
   # example with the shortest sequence as a pasteable spec. SEQ_SEEDS=1,2,3
   # runs one seed after another and stops at the first failure.
+  #: (Definition definition, **untyped opts) -> untyped
   def self.explore(definition, **opts)
-    ENV["SEQ_OBSERVE"] ? observe(definition, out: ENV["SEQ_OBSERVE"]) : explore_cases(definition, **opts)
+    (out = ENV["SEQ_OBSERVE"]) ? observe(definition, out:) : explore_cases(definition, **opts)
   end
 
+  #: (Definition definition, ?test_cases: Integer, ?step_count: Integer, ?seed: Integer?) -> String
   def self.explore_cases(definition, test_cases: 100, step_count: 12, seed: nil)
+    # @type var report: Hash[Symbol, untyped]
     @first_failure = nil
 
     Rails.application.eager_load!
     refuse_network!
     quiet_errors
-    seeds = ENV["SEQ_SEEDS"]&.split(",")&.map { Integer(it) } || [seed || Random.new_seed % 2**31]
+    seeds = ENV["SEQ_SEEDS"]&.split(",")&.map { Integer(it) } || [seed || Random.new_seed % 2**31] #: Array[Integer]
     report = { area: definition.name, cases: test_cases, seeds: [], skipped: definition.skipped, actions: checks(definition),
               params: definition.actions.transform_values { it.params.keys } }
     # The world is built once before any case, so a broken setup stops here,
@@ -948,16 +1085,17 @@ end
   rescue ShrinkCut
     # Shrinking had its share of the time: the shortest sequence found so
     # far stands, and the run ends as a failure like any other.
+    first = @first_failure #: Failure
     report[:verdict] = "failure"
-    report[:reason] = @first_failure.message.strip.sub(/\A(.*)$/) { "#{$1} (shrinking stopped after #{SHRINK_SECONDS} s)" }
-    raise Failure.new(report[:reason].lines.first.chomp, log: @first_failure.log, definition:)
+    report[:reason] = first.message.strip.sub(/\A(.*)$/) { "#{$1} (shrinking stopped after #{SHRINK_SECONDS} s)" }
+    raise Failure.new(report[:reason].lines.first.chomp, log: first.log, definition:)
   rescue SignalException => e
-    raise unless @first_failure
+    raise unless (first = @first_failure)
 
     # The time limit cut shrinking: the shortest failure so far still
     # stands, with its own sequence.
     report[:verdict] = "failure"
-    report[:reason] = @first_failure.message.strip.sub(/\A(.*)$/) { "#{$1} (not shrunk: the time limit cut shrinking)" }
+    report[:reason] = first.message.strip.sub(/\A(.*)$/) { "#{$1} (not shrunk: the time limit cut shrinking)" }
     $stderr.puts "Sequences::Failure:\n#{report[:reason]}"
     raise
   rescue Exception => e # rubocop:disable Lint/RescueException
@@ -974,7 +1112,9 @@ end
     # A refusal quotes a response body, which Rack hands over as binary; a
     # byte that is not UTF-8 must not lose the whole report.
     utf8 = ->(v) { v.is_a?(String) ? v.dup.force_encoding(Encoding::UTF_8).scrub : v.is_a?(Hash) ? v.to_h { [utf8.(_1), utf8.(_2)] } : v.is_a?(Array) ? v.map(&utf8) : v }
-    File.write(ENV["SEQ_REPORT"], JSON.pretty_generate(utf8.(report))) if ENV["SEQ_REPORT"]
+    if (path = ENV["SEQ_REPORT"])
+      File.write(path, JSON.pretty_generate(utf8.(report)))
+    end
     reset_database
   end
 
@@ -985,8 +1125,9 @@ end
   # the rows it added, changed or removed (by attributes, no ids or times),
   # and the outside fakes whose state it changed. Run on base and on head,
   # the two files differ exactly where behavior does; nothing here judges.
-  OBSERVE_NOISE = /\A(created_at|updated_at)\z|(\A|_)(token|digest|uuid|nonce|secret|salt)\z/
+  OBSERVE_NOISE = /\A(created_at|updated_at)\z|(\A|_)(token|digest|uuid|nonce|secret|salt)\z/ #: Regexp
 
+  #: (Definition definition, out: String) -> void
   def self.observe(definition, out:)
     Rails.application.eager_load!
     refuse_network!
@@ -1012,7 +1153,7 @@ end
         order.each_with_index do |name, k|
           action = definition.actions.fetch(name)
           choice = catch(:sequences_skip) { runner.choose(action, RandomDraw.new(random)) }
-          line = { area: definition.name, seq: order, index: i, step: k + 1, action: name }
+          line = { area: definition.name, seq: order, index: i, step: k + 1, action: name } #: Hash[Symbol, untyped]
           if choice.nil?
             io.puts JSON.generate(line.merge(outcome: "skipped: a pool was empty"))
             next
@@ -1042,6 +1183,7 @@ end
   # object id => [class name, state]. Keyed by object, not by class: fakes
   # of earlier cases stay in ObjectSpace until a GC, so a class key picked
   # an instance by heap order and the same step differed between two runs.
+  #: () -> Hash[Integer, [String?, String]]
   def self.outside_digest
     outside_classes_declared.flat_map { |klass| ObjectSpace.each_object(klass).to_a }.to_h do |fake|
       [fake.object_id, [fake.class.name, fake.instance_variables.to_h { [it, fake.instance_variable_get(it).inspect] }.inspect]]
@@ -1050,10 +1192,13 @@ end
 
   # table => {"added" => [...], "changed" => [...], "removed" => [...]}, rows
   # by their non-volatile columns; ids appear only as the row they name.
+  #: (Hash[String, Array[Hash[String, untyped]]] before, Hash[String, Array[Hash[String, untyped]]] after) -> Hash[String, Hash[String, Array[untyped]]]
   def self.row_changes(before, after)
-    clean = ->(row) { row.reject { |c, _| OBSERVE_NOISE.match?(c) } }
-    after.each_with_object({}) do |(table, rows), out|
-      old = before.fetch(table, []).to_h { [it["id"], clean.(it)] }
+    clean = ->(row) { row.reject { |c, _| OBSERVE_NOISE.match?(c) } } #: ^(Hash[String, untyped]) -> Hash[String, untyped]
+    changes = {} #: Hash[String, Hash[String, Array[untyped]]]
+    none = [] #: Array[Hash[String, untyped]]
+    after.each_with_object(changes) do |(table, rows), out|
+      old = before.fetch(table, none).to_h { [it["id"], clean.(it)] }
       now = rows.to_h { [it["id"], clean.(it)] }
       added = now.reject { |id, _| old.key?(id) }.values
       removed = old.reject { |id, _| now.key?(id) }.values
@@ -1068,11 +1213,12 @@ end
     end
   end
 
+  #: (Definition definition, Integer test_cases, Integer step_count, Integer seed) -> Hash[Symbol, untyped]
   def self.explore_seed(definition, test_cases, step_count, seed)
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     count = 0
-    first_failure = nil
-    noise = Set.new
+    first_failure = nil #: [Integer, Float]?
+    noise = Set.new #: Set[String]
     shrink = !ENV["SEQ_NO_SHRINK"]
     Hegel.test(test_cases:, seed:, verbosity: :quiet,
                phases: shrink ? nil : %i[generate],
@@ -1085,8 +1231,9 @@ end
       rescue Failure => e
         first_failure ||= [count, Process.clock_gettime(Process::CLOCK_MONOTONIC) - started]
         # Keep the shortest sequence of the same failure seen while shrinking.
-        @first_failure = e if @first_failure.nil? ||
-                              (e.log.size < @first_failure.log.size && e.to_s.lines.first == @first_failure.to_s.lines.first)
+        kept = @first_failure
+        @first_failure = e if kept.nil? ||
+                              (e.log.size < kept.log.size && e.to_s.lines.first == kept.to_s.lines.first)
         raise
       end
     end
@@ -1100,6 +1247,7 @@ end
     end
   end
 
+  #: (Definition definition, untyped tc, Integer step_count, Set[String] noise) -> void
   def self.run_case(definition, tc, step_count, noise)
     runner = Runner.new(definition)
     begin
@@ -1115,7 +1263,8 @@ end
     begin
       with_zone("UTC") { Hegel::Stateful.run(machine_for(definition, runner).new, tc, step_count:) }
     rescue Exception => e
-      $stderr.puts "  case ended: #{e.class}: #{e.message[0, 200]} #{e.backtrace.first(6).join(" | ")}" if ENV["SEQ_DEBUG"]
+      trace = e.backtrace #: Array[String]
+      $stderr.puts "  case ended: #{e.class}: #{e.message[0, 200]} #{trace.first(6).join(" | ")}" if ENV["SEQ_DEBUG"]
       raise
     end
     return if definition.zones.empty?
@@ -1151,6 +1300,7 @@ end
 
   # What a clean verdict has to have reached: every action, its offset
   # replay, and each pair of doors.
+  #: (Definition definition) -> Array[Symbol]
   def self.checks(definition)
     definition.actions.keys +
       definition.actions.values.select { it.params.value?(:local_time) }.map { :"#{it.name} [other offset]" } +
@@ -1158,8 +1308,10 @@ end
   end
 
   # For a drafted invariant: see Runner#order_kept.
+  #: (untyped model, **untyped options) -> (true | String)
   def self.order_kept(model, **options) = Thread.current[:sequences_runner].order_kept(model, **options)
 
+  #: (Symbol? action, Module klass) -> void
   def self.reached_outside_call(action, klass)
     return unless action
 
@@ -1167,11 +1319,14 @@ end
     (@outside_classes ||= Hash.new { |h, k| h[k] = Set.new })[action] << klass
   end
 
+  #: () -> Set[Symbol]
   def self.outside_callers = (@outside_callers ||= Set.new)
+  #: () -> Hash[Symbol, Set[Module]]
   def self.outside_classes = (@outside_classes ||= Hash.new { |h, k| h[k] = Set.new })
 
   # What the run reached, so a clean result says what it covered: an action
   # that was only ever refused, or never drawn, checked nothing.
+  #: (Symbol name, untyped outcome) -> void
   def self.tally(name, outcome)
     kind = kind(outcome)
     (@tallies ||= Hash.new { |h, k| h[k] = Hash.new(0) })[name][kind] += 1
@@ -1179,11 +1334,13 @@ end
 
     # Up to three distinct refusals, counted: the first one seen can be the
     # rare one (an invalid kind) and hide the one every other draw met.
-    seen = ((@examples ||= {})[name.to_s] ||= Hash.new(0))
+    examples = @examples ||= {} #: Hash[String, Hash[String, Integer]]
+    seen = (examples[name.to_s] ||= Hash.new(0))
     text = outcome.to_s[0, 160]
     seen[text] += 1 if seen.key?(text) || seen.size < 3
   end
 
+  #: (untyped outcome) -> String
   def self.kind(outcome)
     kind = outcome.to_s[/\A(refused: [\w:]+|HTTP \d\d\d refused|HTTP \d|ok|paused, second waited on a lock|paused|no outside call)/] || outcome.to_s[0, 30]
     kind.sub(/HTTP (\d)(\d\d)?/, 'HTTP \1xx')
@@ -1191,21 +1348,28 @@ end
 
   # Plain random draws for the probe: no shrinking, no Hegel.
   class RandomDraw
+    # @rbs @random: Random
+
+    #: (Random random) -> void
     def initialize(random) = (@random = random)
+    #: (Integer size) -> Integer
     def index(size) = @random.rand(size)
+    #: (Range[Integer] range) -> Integer
     def int(range) = @random.rand(range)
+    #: (bool ok) -> bool
     def assume(ok) = ok || throw(:sequences_skip)
   end
 
   # A random walk over every action with no invariants: the tables each
   # action writes, the outside services it calls, and how it ends. propose.rb
   # groups actions into areas by it.
+  #: (Definition definition, ?walks: Integer, ?steps: Integer, ?seed: Integer) -> Hash[Symbol, Hash[Symbol, untyped]]
   def self.probe(definition, walks: 60, steps: 20, seed: 1)
     Rails.application.eager_load!
     refuse_network!
     quiet_errors
     random = Random.new(seed)
-    stats = Hash.new { |h, k| h[k] = { writes: Hash.new(0), reads: Hash.new(0), outcomes: Hash.new(0), errors: Hash.new(0), refusals: [], runs: 0 } }
+    stats = Hash.new { |h, k| h[k] = { writes: Hash.new(0), reads: Hash.new(0), outcomes: Hash.new(0), errors: Hash.new(0), refusals: Array.new, runs: 0 } } #: Hash[Symbol, untyped]
     sub = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
       name = Thread.current[:sequences_action] or next
       verb, table = payload[:sql].match(/\A\s*(INSERT INTO|UPDATE|DELETE FROM)\s+"?(\w+)"?/i)&.captures
@@ -1229,7 +1393,8 @@ end
           next
         end
         # The first action, in random order, whose pools hold a record.
-        action, choice = nil
+        action = nil #: Action?
+        choice = nil #: untyped
         actions.shuffle(random:).each do |candidate|
           drawn = catch(:sequences_skip) { runner.choose(candidate, RandomDraw.new(random)) }
           next unless drawn
@@ -1260,21 +1425,25 @@ end
     reset_database
   end
 
+  #: () -> String
   def self.coverage_report
-    return "" unless @tallies
+    tallies = @tallies
+    return "" unless tallies
 
-    lines = @tallies.sort_by { |k, _| k.to_s }.map { |name, kinds| "  #{name}: #{kinds.map { |k, n| "#{k} #{n}" }.join(", ")}" }
+    lines = tallies.sort_by { |k, _| k.to_s }.map { |name, kinds| "  #{name}: #{kinds.map { |k, n| "#{k} #{n}" }.join(", ")}" }
     @tallies = nil
     return "" if lines.empty?
     "steps reached (outcome count):\n#{lines.join("\n")}"
   end
 
+  #: (Array[entry] log) -> Array[Integer]
   def self.world_sizes(log) = log.find { it[:step] == :world }&.dig(:args) || []
 
   # The fakes are plain objects that remember charges and failures armed; a
   # trial's rollback must undo those too.
+  #: () -> [Array[untyped], Array[untyped]]
   def self.save_outside_state
-    seqs = sequence_state_sql.empty? ? [] : ActiveRecord::Base.connection.select_rows(sequence_state_sql)
+    seqs = sequence_state_sql.empty? ? [] : ActiveRecord::Base.connection.select_rows(sequence_state_sql) #: Array[untyped]
     fakes = outside_classes_declared.flat_map { |klass| ObjectSpace.each_object(klass).to_a }.map do |fake|
       [fake, fake.instance_variables.to_h { [it, Marshal.load(Marshal.dump(fake.instance_variable_get(it)))] }]
     rescue TypeError
@@ -1283,16 +1452,20 @@ end
     [seqs, fakes.compact]
   end
 
-  def self.restore_outside_state((seqs, fakes))
+  #: (untyped) -> void
+  def self.restore_outside_state(saved)
+    seqs, fakes = saved
     conn = ActiveRecord::Base.connection
     conn.execute(seqs.map { |name, value, called| "SELECT setval(#{conn.quote(name)}, #{Integer(value)}, #{called})" }.join("; ")) unless seqs.empty?
     fakes.each { |fake, ivars| ivars.each { fake.instance_variable_set(_1, _2) } }
   end
 
+  #: () -> bool
   def self.postgres? = ActiveRecord::Base.connection.adapter_name.match?(/postg/i)
 
   # Only PostgreSQL keeps id counters outside the transaction a trial rolls
   # back; SQLite's sqlite_sequence is a table, rolled back with the rows.
+  #: () -> String
   def self.sequence_state_sql
     @sequence_state_sql ||= if postgres?
                               conn = ActiveRecord::Base.connection
@@ -1302,8 +1475,10 @@ end
                             end
   end
 
+  #: () -> Set[Module]
   def self.outside_classes_declared = (@outside_classes_declared ||= Set.new)
 
+  #: (Definition definition, Array[entry] entries) -> Array[entry]
   def self.replay(definition, entries)
     Rails.application.eager_load!
     refuse_network!
@@ -1314,11 +1489,13 @@ end
     reset_database
   end
 
+  #: () -> untyped
   def self.reset_database = empty_tables
 
   # A 404 or 422 renders the plain error page, not the developer page:
   # building that page (source extracts, error highlight) took a third of
   # the run. The status the action answers is unchanged.
+  #: () -> false
   def self.quiet_errors = Rails.application.env_config["action_dispatch.show_detailed_exceptions"] = false
 
   # Empties every table and restarts its ids, so two runs of the same steps
@@ -1327,6 +1504,7 @@ end
   # A schema whose keys form a cycle falls back to TRUNCATE. SQLite has no
   # TRUNCATE and no sequences: DELETE with the foreign keys off, then
   # sqlite_sequence, which holds the ids to restart.
+  #: () -> untyped
   def self.empty_tables
     conn = ActiveRecord::Base.connection
     return empty_tables_without_truncate(conn) unless postgres?
@@ -1334,7 +1512,7 @@ end
     @empty_sql ||= begin
       tables = conn.tables - %w[schema_migrations ar_internal_metadata]
       parents = tables.to_h { |t| [t, conn.foreign_keys(t).map(&:to_table) - [t]] }
-      order = []
+      order = [] #: Array[untyped]
       left = tables.dup
       until left.empty?
         leaves = left.reject { |t| left.any? { |other| parents[other].include?(t) } }
@@ -1353,16 +1531,19 @@ end
     conn.execute(@empty_sql)
   end
 
+  #: (untyped conn) -> untyped
   def self.empty_tables_without_truncate(conn)
     @empty_statements ||= begin
       tables = conn.tables - %w[schema_migrations ar_internal_metadata]
       sqlite = conn.adapter_name.match?(/sqlite/i) && conn.select_value("SELECT 1 FROM sqlite_master WHERE name = 'sqlite_sequence'")
-      tables.map { "DELETE FROM #{conn.quote_table_name(it)}" } + (sqlite ? ["DELETE FROM sqlite_sequence"] : [])
+      extra = sqlite ? ["DELETE FROM sqlite_sequence"] : [] #: Array[String]
+      tables.map { "DELETE FROM #{conn.quote_table_name(it)}" } + extra
     end
     conn.disable_referential_integrity { @empty_statements.each { conn.execute(it) } }
   end
 
 
+  #: [T] (String zone) { () -> T } -> T
   def self.with_zone(zone)
     old = ENV["TZ"]
     ENV["TZ"] = zone
@@ -1371,6 +1552,7 @@ end
     ENV["TZ"] = old
   end
 
+#: (Definition definition, Array[entry] log, String zone) -> Hash[String, Array[Hash[String, untyped]]]
 def self.replay_snapshot(definition, log, zone)
   runner = Runner.new(definition)
   with_zone(zone) do
@@ -1380,12 +1562,14 @@ def self.replay_snapshot(definition, log, zone)
   end
 end
 
+#: (Hash[String, Array[Hash[String, untyped]]] a, Hash[String, Array[Hash[String, untyped]]] b, Set[String] noise) -> Array[{ column: String, text: String }]
 def self.diff(a, b, noise)
   a.flat_map do |table, rows|
     other = b.fetch(table)
     next [{ column: table, text: "#{table}: #{rows.size} rows vs #{other.size} rows" }] if rows.size != other.size
 
     rows.zip(other).flat_map do |x, y|
+      y = y #: Hash[String, untyped]
       x.filter_map do |col, v|
         next if v == y[col] || noise.include?("#{table}.#{col}")
 
@@ -1394,4 +1578,32 @@ def self.diff(a, b, noise)
     end
   end
 end
+
+  # Last in the module: rbs-inline reads `module_function` as applying to
+  # every method after it in the file.
+  module Report
+    module_function
+
+    #: (Array[entry] log) -> String
+    def narrative(log)
+      lines = log.each_with_index.map do |e, i|
+        "  #{i + 1}. [#{e[:at]}] #{e[:step]} #{e[:label]}#{"  => #{e[:outcome]}" if e[:outcome] && e[:outcome] != "ok"}"
+      end
+      "Shortest sequence found:\n#{lines.join("\n")}"
+    end
+
+    #: (Definition definition, Array[entry] log) -> String
+    def pasteable(definition, log)
+      steps = log.map { |e| "      #{e.slice(:step, :args, :at, :failure).inspect}," }
+      <<~RUBY
+        Paste into the target's sequence spec to keep this case:
+
+          it "keeps the case #{definition.name} found" do
+            Sequences.replay(Sequences[#{definition.name.inspect}], [
+        #{steps.join("\n")}
+            ])
+          end
+      RUBY
+    end
+  end
 end

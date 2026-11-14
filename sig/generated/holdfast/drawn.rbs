@@ -1,0 +1,111 @@
+# Generated from lib/holdfast/drawn.rb with RBS::Inline
+
+module Holdfast
+  # What an input has to draw before a row may say clean: each value the
+  # change added or removed that the target can see (a member of a changed
+  # list or table constant it reads, a literal a changed line compares
+  # with), and each branch the change added to it. Tests that reach a line
+  # and agree say nothing about a value none of them drew: a scope that
+  # stopped selecting `in_transit` agrees on every hold that is not in
+  # transit.
+  module Drawn
+    # arm is set for a branch whose body shares the line with its condition
+    # (`return x if y`): every run of that line counts it, so only branch
+    # coverage, matched on the body's span, can tell whether the body ran.
+    class Need < Data
+      attr_reader value(): String?
+
+      attr_reader file(): String
+
+      attr_reader line(): Integer?
+
+      attr_reader why(): String
+
+      attr_reader arm(): String?
+
+      def self.new: (String? value, String file, Integer? line, String why, String? arm) -> instance
+                  | (value: String?, file: String, line: Integer?, why: String, arm: String?) -> instance
+
+      def self.members: () -> [ :value, :file, :line, :why, :arm ]
+
+      def members: () -> [ :value, :file, :line, :why, :arm ]
+    end
+
+    class Need
+      def self.new: (value: String?, file: String, line: Integer?, why: String, ?arm: String?) -> instance
+                  | ...
+
+      # : (value: String?, file: String, line: Integer?, why: String, ?arm: String?) -> void
+      def initialize: (value: String?, file: String, line: Integer?, why: String, ?arm: String?) -> void
+
+      # : () -> String
+      def label: () -> String
+    end
+
+    COMPARE: Array[Symbol]
+
+    # What a test ran in a file it never reached.
+    NONE: Array[untyped]
+
+    self.@constants: Hash[[ String, String ], Hash[String, json]]
+
+    # Qualified constant name => { "added" => [...], "removed" => [...] } for
+    # every list or table constant the change edits, adds or deletes.
+    # : (Change) -> Hash[String, json]
+    def self.constants: (Change) -> Hash[String, json]
+
+    # : (Change change, String rev, String file) -> String
+    def self.show: (Change change, String rev, String file) -> String
+
+    # NAME = %w[...] / [...] / { "k" => ... } (with or without .freeze), by
+    # its qualified name.
+    # : (String) -> Hash[String, Array[String]]
+    def self.members: (String) -> Hash[String, Array[String]]
+
+    # : (Prism::Node?) -> String?
+    def self.literal: (Prism::Node?) -> String?
+
+    # The needs of one target: the changed constants it reads (by a changed
+    # line, or as the value a caller was walked from), the literals its
+    # changed lines compare with that the other side lacks, and the
+    # branches the change added inside it.
+    # : (Change change, Target t, changed_lines changed) -> Array[Need]
+    def self.needs: (Change change, Target t, changed_lines changed) -> Array[Need]
+
+    # : (Hash[String, json] table, String name) -> json?
+    def self.lookup: (Hash[String, json] table, String name) -> json?
+
+    # : (String name, json entry) -> Array[Need]
+    def self.members_needs: (String name, json entry) -> Array[Need]
+
+    # String and symbol literals in a comparison, a `when`, or an `in` on
+    # the given lines.
+    # : (Prism::Node ast, Array[Integer] lines) -> Array[String]
+    def self.compared: (Prism::Node ast, Array[Integer] lines) -> Array[String]
+
+    # Each if, unless, elsif, when or in that starts on a changed line,
+    # with the first line of its body: reaching it is drawing the branch. A
+    # body on the condition's own line also carries its span.
+    # Each as [body line, arm or nil, the branch's first line].
+    # : (Prism::Node ast, Array[Integer] lines) -> Array[[Integer, String?, String?]]
+    def self.branches: (Prism::Node ast, Array[Integer] lines) -> Array[[ Integer, String?, String? ]]
+
+    # : (Prism::Node ast) { (Prism::Node) -> boolish } -> Array[Prism::Node]
+    def self.nodes: (Prism::Node ast) { (Prism::Node) -> boolish } -> Array[Prism::Node]
+
+    # A value counts as drawn when one reached test wrote it on both sides:
+    # the same input on base and head. Written on one side only, it came
+    # from the code under test, not from an input. A branch counts when a
+    # reached test ran its first body line on head, or, for a body on the
+    # condition's line, took that arm.
+    # : (Array[Need] needs, Array[Stages::Diff::Outcome] outcomes, reach reach) -> Array[Need]
+    def self.missing: (Array[Need] needs, Array[Stages::Diff::Outcome] outcomes, reach reach) -> Array[Need]
+
+    # : (reach reach, Stages::Diff::Outcome outcome, String value) -> Array[String]
+    def self.sides_writing: (reach reach, Stages::Diff::Outcome outcome, String value) -> Array[String]
+
+    # "in_transit: written on base only by spec/services/member_merge_spec.rb"
+    # : (Array[Need] needs, Array[Stages::Diff::Outcome] outcomes, reach reach) -> Array[String]
+    def self.one_sided: (Array[Need] needs, Array[Stages::Diff::Outcome] outcomes, reach reach) -> Array[String]
+  end
+end

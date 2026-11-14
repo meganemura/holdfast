@@ -1,0 +1,59 @@
+# Generated from lib/holdfast/change.rb with RBS::Inline
+
+module Holdfast
+  # What one run looks at: the base whose behavior must survive, the head
+  # (the working tree as it is now, committed or not), and so which mode the
+  # harness runs in. The working tree is snapshotted into a commit object
+  # through a private index, so the caller's index and stash stay untouched.
+  class Change < Data
+    attr_reader root(): String
+
+    attr_reader base(): String
+
+    attr_reader head(): String
+
+    attr_reader base_label(): String
+
+    attr_reader mode(): String
+
+    attr_reader named(): Array[String]
+
+    def self.new: (String root, String base, String head, String base_label, String mode, Array[String] named) -> instance
+                | (root: String, base: String, head: String, base_label: String, mode: String, named: Array[String]) -> instance
+
+    def self.members: () -> [ :root, :base, :head, :base_label, :mode, :named ]
+
+    def members: () -> [ :root, :base, :head, :base_label, :mode, :named ]
+  end
+
+  # The paths whose edits change what the app does.
+  CODE: Array[String]
+
+  class Change
+    # @rbs root: String
+    # @rbs base_ref: String
+    # @rbs named: Array[String]
+    # @rbs return: Change
+    def self.read: (String root, base_ref: String, named: Array[String]) -> Change
+
+    # : (String) -> String
+    def self.snapshot: (String) -> String
+
+    # : (String root, *String args, ?env: Hash[String, String]) -> String
+    def self.git: (String root, *String args, ?env: Hash[String, String]) -> String
+
+    # : () -> bool
+    def changed?: () -> bool
+
+    # : (String) -> String
+    def short: (String) -> String
+
+    # A dirty tree's snapshot is a commit no `git log` shows; the reader
+    # gets the commit it sits on instead.
+    # : () -> String
+    def tree_label: () -> String
+
+    # : () -> String
+    def header: () -> String
+  end
+end

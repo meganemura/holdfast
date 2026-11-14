@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 # Runs every sequence definition in SEQUENCES_OUT, each in its own process
 # on its own numbered test database, until the seeds are clean or one fails,
 # and prints one table. The hunt stage runs it as a script:
@@ -13,13 +15,14 @@ $stdout.sync = true
 # Logs hold UTF-8 (zone names, refusals); a caller with no LANG must not make them US-ASCII.
 Encoding.default_external = Encoding::UTF_8
 
-LIB = __dir__
+LIB = __dir__ #: String
 
 args = ARGV.dup
-take = ->(flag, default) { (i = args.index(flag)) ? args.slice!(i, 2).last : default }
+take = ->(flag, default) { (i = args.index(flag)) ? args.slice!(i, 2)&.last : default } #: ^(String, untyped) -> untyped
 jobs = Integer(take.("-j", [Etc.nprocessors, 4].min))
 cases = Integer(take.("--cases", 300))
-seeds = take.("--seeds", Array.new(3) { rand(1..2**31 - 1) }.join(","))
+top = 2**31 - 1 #: Integer
+seeds = take.("--seeds", Array.new(3) { rand(1..top) }.join(",")) #: String
 limit = Integer(take.("--timeout", 3600))
 json_out = take.("--json", nil)
 defs = ENV.fetch("SEQUENCES_OUT", "spec/sequences")
@@ -50,12 +53,19 @@ puts "seeds #{seeds}, #{cases} cases each, #{files.size} areas, #{jobs} at a tim
 
 queue = Queue.new
 files.each { queue << it }
-results = {}
-running = {}
+results = {} #: Hash[String, Hash[Symbol, untyped]]
+running = {} #: Hash[String, Float]
 lock = Mutex.new
 
 # Each refusal names what to change: a param the text mentions, or the kind
 # of input a refusal like it needs.
+# @rbs!
+#   class Object
+#     private def hint: (untyped text, Array[untyped] params) -> String
+#     private def clean_refusal: (untyped text) -> String?
+#     private def scope: (Hash[String, untyped] report) -> [Integer, Integer, Array[String]]
+#     private def verdict: (Hash[Symbol, untyped] r, Integer limit) -> [String, String, String]
+#   end
 def hint(text, params)
   low = text.to_s.downcase
   named = params.select do |param|
@@ -101,7 +111,7 @@ def scope(report)
   [done, report["actions"].size + report["skipped"].size, missing]
 end
 
-RANK = { "FAILURE" => 0, "unchecked" => 1, "partly checked" => 2, "clean" => 3 }.freeze
+RANK = { "FAILURE" => 0, "unchecked" => 1, "partly checked" => 2, "clean" => 3 }.freeze #: Hash[String, Integer]
 
 # A verdict of clean means every action, offset replay and pair of doors
 # reached its target at least once; anything less is partly checked.
@@ -184,11 +194,15 @@ jobs.times.map do |i|
 end.each(&:join)
 heartbeat.kill
 
-rows = results.map { |name, r| [name, *verdict(r, limit), r] }.sort_by { |name, kind, *| [RANK.fetch(kind), name] }
+rows = results.map do |name, r|
+  kind, reached, text = verdict(r, limit)
+  [name, kind, reached, text, r] #: [String, String, String, String, Hash[Symbol, untyped]]
+end.sort_by { |name, kind, *| [RANK.fetch(kind), name] }
 width = rows.map { it[0].size }.max
 puts format("%-#{width}s  %-7s  %s", "area", "reached", "verdict")
 rows.each do |name, kind, reached, text, r|
   first, *rest = text.lines
+  first = first #: String
   puts format("%-#{width}s  %-7s  %s", name, reached, first.chomp)
   rest.each { puts "#{" " * (width + 9)}#{it}" }
   puts format("%-#{width}s  %-7s  log: %s (%d s)", "", "", r[:log].sub("#{Dir.pwd}/", ""), r[:seconds]) unless kind == "clean"

@@ -1,0 +1,15 @@
+# The RBS of open3 lists no spawn options (chdir:, err:), which every
+# call here passes.
+module Open3
+  def self.capture2: (Open3::env, *String, **untyped) -> [String, Process::Status]
+                   | (*String, **untyped) -> [String, Process::Status]
+                   | ...
+
+  def self.capture2e: (Open3::env, *String, **untyped) -> [String, Process::Status]
+                    | (*String, **untyped) -> [String, Process::Status]
+                    | ...
+
+  def self.capture3: (Open3::env, *String, **untyped) -> [String, String, Process::Status]
+                   | (*String, **untyped) -> [String, String, Process::Status]
+                   | ...
+end

@@ -1,3 +1,5 @@
+# rbs_inline: enabled
+
 # holdfast checks a Rails app by running it. `holdfast check` turns what an
 # agent suspects into specs and runs them on base and head. `holdfast run`
 # looks at the working tree against a base and decides what runs: it selects
@@ -13,14 +15,36 @@ require "yaml"
 require "prism"
 
 module Holdfast
+  # @rbs!
+  #   # A parsed JSON object: what record.json, a jitcatch brief, a test
+  #   # result or a hunt table holds. Its values are whatever the file says.
+  #   type json = Hash[String, untyped]
+  #
+  #   # file => { "base" => [lines], "head" => [lines] } a diff changed.
+  #   type changed_lines = Hash[String, Hash[String, Array[Integer]]]
+  #
+  #   # test => side ("1" base, "2" head) => file => what that test ran on
+  #   # that side: line numbers, or under the "(drew)" and "(arms)" keys the
+  #   # values its inputs wrote and the branch arms it took.
+  #   type reach = Hash[String, Hash[String, Hash[String, Array[untyped]]]]
+  #
+  #   class Error < StandardError
+  #   end
+
+  # @rbs skip
   Error = Class.new(StandardError)
 
   # Loaded into the app's own test processes by path, never required here.
-  RUNTIME = File.expand_path("holdfast/runtime", __dir__)
-  SEQUENCES = File.expand_path("holdfast/sequences", __dir__)
+  # __dir__ is nil only in code that eval reads, never in a file.
+  HERE = __dir__ #: String
+  RUNTIME = File.expand_path("holdfast/runtime", HERE) #: String
+  SEQUENCES = File.expand_path("holdfast/sequences", HERE) #: String
 
+  #: (String) -> String
   def self.dir(root) = File.join(root, ".holdfast")
+  #: (String) -> String
   def self.slug(name) = name.gsub(/[^\w]+/, "-").gsub(/\A-|-\z/, "").downcase
+  #: (String) -> String
   def self.snake(name) = name.gsub(/([a-z\d])([A-Z])/, '\1_\2').downcase
 end
 

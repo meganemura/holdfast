@@ -1,0 +1,53 @@
+# Generated from lib/holdfast/stages/hunt.rb with RBS::Inline
+
+module Holdfast
+  module Stages
+    # The hunt stage: the sequences library drafts one definition per write
+    # area of the app (routes, Grape endpoints, jobs), then runs random
+    # orders of those actions against the real database under invariants,
+    # time zones and second doors. Its definitions live in
+    # .holdfast/sequences/, outside the app's tree, so a hunt never makes the
+    # next run see a change. Each area's verdict becomes one row:
+    #   FAILURE         -> bug_suspect, with the log that holds the shortest sequence
+    #   partly checked  -> unchecked, with what was not covered
+    #   unchecked       -> unchecked, with why it never ran
+    #   clean           -> clean, scoped to the seeds and cases that ran
+    # In a change, only the areas that touch a changed file run.
+    module Hunt
+      DEFAULT_BUDGET: ::Integer
+
+      # : (Change change, Record record, budget: Integer?, ?files: Array[String]?) -> Array[Verdict]
+      def self.run: (Change change, Record record, budget: Integer?, ?files: Array[String]?) -> Array[Verdict]
+
+      # The first line of a hunt says how much of it ran: an action that was
+      # refused every time, or never drawn, checked nothing, and an area that
+      # reached under half its actions is not listed as clean. An area that
+      # failed stopped at its failure, so its reach says nothing about setup.
+      # : (Change change, Array[json] table) -> Verdict?
+      def self.reach_row: (Change change, Array[json] table) -> Verdict?
+
+      # The sequences library needs hegeltest, which the app's bundle may
+      # not list. A Gemfile of holdfast's own evaluates the app's and adds
+      # it, locked from the gems already installed, so the app's Gemfile and
+      # lock stay untouched.
+      # Sets BUNDLE_GEMFILE in +env+; a row only when it could not.
+      # : (Change change, Hash[String, String] env) -> Verdict?
+      def self.overlay: (Change change, Hash[String, String] env) -> Verdict?
+
+      # Drafts the areas into +dir+; a row only when drafting failed.
+      # : (Change change, Record record, String dir, Hash[String, String] env) -> Verdict?
+      def self.draft: (Change change, Record record, String dir, Hash[String, String] env) -> Verdict?
+
+      # An area runs for a change when its definition names a changed file's
+      # table, constant or route resource.
+      # : (Array[String] areas, Array[String] files) -> Array[String]
+      def self.touching: (Array[String] areas, Array[String] files) -> Array[String]
+
+      # : (Change change, json r) -> Verdict
+      def self.area_row: (Change change, json r) -> Verdict
+
+      # : (String target, String kind, String reason, Array[String] evidence, String next_step, ?scope: String?) -> Verdict
+      def self.row: (String target, String kind, String reason, Array[String] evidence, String next_step, ?scope: String?) -> Verdict
+    end
+  end
+end

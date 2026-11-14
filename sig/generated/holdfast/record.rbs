@@ -1,0 +1,103 @@
+# Generated from lib/holdfast/record.rb with RBS::Inline
+
+module Holdfast
+  # What this project needs to run a test, learned once by running it and
+  # kept in .holdfast/record.json for every stage. Each learning step keeps
+  # its command and outcome, so a failed setup is one fact the verdicts cite
+  # instead of a load error on every row.
+  class Record
+    # jitcatch numbers base 1 and head 2; a pin runs in a checkout of its own.
+    SIDES: Hash[String, String]
+
+    COVERAGE: Array[String]
+
+    attr_reader data: json
+
+    # : (String) -> String
+    def self.path: (String) -> String
+
+    # : (String, ?relearn: bool?) -> Record
+    def self.load_or_learn: (String, ?relearn: bool?) -> Record
+
+    # : (String) -> Record
+    def self.learn: (String) -> Record
+
+    # : (String) -> json
+    def self.read_facts: (String) -> json
+
+    # Two apps whose database.yml both say app_test<N> would share one
+    # database on a shared server. Each app gets its own names, from its
+    # directory and a digest of its path, through DATABASE_URL, which Rails
+    # prefers over database.yml and jitcatch numbers per side.
+    # : (String, String?) -> String?
+    def self.database_url: (String, String?) -> String?
+
+    # A SQLite database.yml names one file, and TEST_ENV_NUMBER changes it
+    # only where the file name reads it: base, head and each hunt worker
+    # wrote the app's own storage/test.sqlite3, and emptied it after a race.
+    # Each gets a file of its own under .holdfast/db/ instead.
+    # : (String) -> String
+    def self.sqlite_url: (String) -> String
+
+    # : (json facts, String number) -> Hash[String, String]
+    def self.side_env: (json facts, String number) -> Hash[String, String]
+
+    # : (json facts, String number) -> String?
+    def self.database_name: (json facts, String number) -> String?
+
+    # : (String) -> String
+    def self.base_branch: (String) -> String
+
+    # : (String root, String framework) -> String?
+    def self.smallest_test: (String root, String framework) -> String?
+
+    # : (String root, String name, String command, Hash[String, String] extra_env) -> json
+    def self.run_step: (String root, String name, String command, Hash[String, String] extra_env) -> json
+
+    # Rake ends every failure with the same two lines; the cause is above them.
+    # : (String) -> Array[String]
+    def self.failure_lines: (String) -> Array[String]
+
+    # : (json) -> void
+    def initialize: (json) -> void
+
+    # : () -> bool
+    def ok?: () -> bool
+
+    # : () -> String?
+    def failure: () -> String?
+
+    # : () -> String
+    def framework: () -> String
+
+    # : () -> Array[String]
+    def env_names: () -> Array[String]
+
+    # : () -> String?
+    def side_setup: () -> String?
+
+    # : () -> String
+    def bundle: () -> String
+
+    # : () -> String
+    def helper: () -> String
+
+    # : () -> String
+    def base_branch: () -> String
+
+    # : () -> String?
+    def coverage: () -> String?
+
+    # : () -> String?
+    def database_url: () -> String?
+
+    # : (String) -> Hash[String, String]
+    def env_for: (String) -> Hash[String, String]
+
+    # : () -> String
+    def test_suffix: () -> String
+
+    # : (String) -> void
+    def write: (String) -> void
+  end
+end

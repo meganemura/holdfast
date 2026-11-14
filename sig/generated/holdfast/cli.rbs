@@ -1,0 +1,31 @@
+# Generated from lib/holdfast/cli.rb with RBS::Inline
+
+module Holdfast
+  # The stated intent belongs to the branch it was given on, so a run on
+  # another branch does not show a stale one.
+  module Intent
+    # : (String root, String? text) -> String?
+    def self.keep: (String root, String? text) -> String?
+  end
+
+  # `run` is the entry: it decides what to check from the working tree. `show`
+  # prints the last summary again. Exit 2 when a row needs a decision
+  # (unintended_change or bug_suspect), 1 on a usage error, 0 otherwise.
+  module CLI
+    USAGE: String
+
+    type options = Hash[Symbol, untyped]
+
+    # : (Array[String]) -> Integer
+    def self.start: (Array[String]) -> Integer
+
+    # : (options) -> Integer
+    def self.run: (options) -> Integer
+
+    # : (options opts, Array[String] files) -> Integer
+    def self.check: (options opts, Array[String] files) -> Integer
+
+    # : () -> Integer
+    def self.show: () -> Integer
+  end
+end

@@ -1,0 +1,193 @@
+# The parts of Rails, RSpec, Minitest, FactoryBot, Grape and Rack that the
+# files under lib/holdfast/runtime/ and lib/holdfast/sequences/ reach. Those
+# files run inside an app's test process, where the app's own versions of
+# these gems are loaded; holdfast depends on none of them, so each call is
+# untyped here and only the names are declared.
+
+module ActiveSupport
+  module Testing
+    module TimeHelpers
+      def travel_to: (*untyped) ?{ () -> untyped } -> untyped
+    end
+  end
+  module Notifications
+    def self.subscribe: (*untyped) ?{ (*untyped) -> untyped } -> untyped
+    def self.unsubscribe: (untyped) -> untyped
+  end
+  class TimeWithZone
+  end
+  class TimeZone
+    def self.[]: (untyped) -> untyped
+    def self.all: () -> Array[untyped]
+  end
+end
+
+# The core extensions of ActiveSupport that the hunt calls.
+class Time
+  def self.current: () -> untyped
+end
+class Integer
+  def minutes: () -> untyped
+end
+class String
+  def classify: () -> String
+  def constantize: () -> untyped
+  def safe_constantize: () -> untyped
+  def singularize: () -> String
+  def pluralize: () -> String
+  def underscore: () -> String
+  def presence: () -> String?
+end
+
+module ActiveRecord
+  class Base
+    def self.connection: () -> untyped
+    def self.connection_pool: () -> untyped
+    def self.transaction: (**untyped) { () -> untyped } -> untyped
+    def self.prepend: (*Module) -> untyped
+    def self.descendants: () -> Array[untyped]
+    def self.unscoped: () -> untyped
+    def self.column_names: () -> Array[String]
+    def self.abstract_class?: () -> bool
+    def id: () -> untyped
+    def persisted?: () -> bool
+    def has_attribute?: (untyped) -> bool
+    def []: (untyped) -> untyped
+    def attributes: () -> Hash[String, untyped]
+    def saved_changes: () -> Hash[String, untyped]
+  end
+  class Relation
+    def self.prepend: (*Module) -> untyped
+    def records: () -> Array[untyped]
+    def klass: () -> untyped
+  end
+  class Rollback < StandardError
+  end
+  class StatementInvalid < StandardError
+  end
+  module Validations
+    class UniquenessValidator
+    end
+  end
+end
+
+module ActiveModel
+  class UnknownAttributeError < NoMethodError[untyped]
+    def attribute: () -> untyped
+    def record: () -> untyped
+  end
+  class MissingAttributeError < NoMethodError[untyped]
+  end
+  module Validations
+    class InclusionValidator
+    end
+  end
+end
+
+module ActiveJob
+  class Base
+    def self.descendants: () -> Array[untyped]
+  end
+end
+
+module ActionController
+  class RoutingError < StandardError
+  end
+  module HttpAuthentication
+    module Basic
+      def self.encode_credentials: (*untyped) -> String
+    end
+    module Token
+      def self.encode_credentials: (*untyped) -> String
+    end
+  end
+end
+
+module ActionDispatch
+  module Integration
+    class Session
+      def initialize: (untyped app) -> void
+    end
+  end
+end
+
+module Rails
+  def self.application: () -> untyped
+  def self.root: () -> untyped
+  def self.env: () -> untyped
+end
+
+module RSpec
+  def self.describe: (*untyped) ?{ () [self: untyped] -> untyped } -> untyped
+  def self.configure: () { (untyped) -> untyped } -> untyped
+  module Core
+    class Example
+      def self.prepend: (*Module) -> untyped
+      def self.include?: (Module) -> bool
+      def metadata: () -> Hash[Symbol, untyped]
+      def run: (*untyped) -> untyped
+    end
+  end
+  module Mocks
+    class MessageExpectation
+      def self.prepend: (*Module) -> untyped
+      def self.<=: (Module) -> bool?
+      private def orig_object: () -> untyped
+      private def message: () -> Symbol
+    end
+  end
+  module Expectations
+    class ExpectationNotMetError < Exception
+    end
+  end
+end
+
+module Minitest
+  class Test
+    def self.prepend: (*Module) -> untyped
+    def self.include?: (Module) -> bool
+    def name: () -> String
+    def run: (*untyped) -> untyped
+  end
+end
+
+module FactoryBot
+  def self.factories: () -> untyped
+  def self.rewind_sequences: () -> untyped
+  def self.create: (*untyped, **untyped) -> untyped
+  def self.build: (*untyped, **untyped) -> untyped
+  def self.attributes_for: (*untyped, **untyped) -> untyped
+  module Syntax
+    module Methods
+    end
+  end
+  module Declaration
+    class Association
+      def name: () -> Symbol
+    end
+    class Dynamic
+      def name: () -> Symbol
+    end
+    class Implicit
+      def name: () -> Symbol
+    end
+  end
+end
+
+module Grape
+  class API
+    def self.descendants: () -> Array[untyped]
+    class Instance
+    end
+    class Boolean
+    end
+  end
+end
+
+module Rack
+  module Test
+    class UploadedFile
+      def initialize: (*untyped, **untyped) -> void
+    end
+  end
+end
