@@ -61,3 +61,26 @@ jobs:
         run: ruby -Ilib test/run.rb
       - name: Build the gem
         run: gem build holdfast.gemspec
+
+  types:
+    name: Types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "3.4"
+          bundler: Gemfile.lock
+      - name: Install the gems
+        run: bundle install
+      - name: Generate the signatures
+        run: bundle exec rbs-inline --output=sig/generated lib
+      # The intent-to-add makes a new generated file that nobody committed
+      # show in the diff too.
+      - name: Check that the committed signatures are current
+        run: git add --intent-to-add sig && git diff --exit-code sig
+      - name: Check the types
+        run: bundle exec steep check

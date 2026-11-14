@@ -224,9 +224,12 @@ MySQL は試していません。
 bundle install
 bundle install --gemfile test/fixture/clinic/Gemfile
 DB_HOST=localhost DB_PORT=5432 ruby -Ilib test/run.rb
+bundle exec rbs-inline --output=sig/generated lib
+bundle exec steep check
 ```
 
 `DB_HOST` がなければ、クリニックアプリを走らせるテストはスキップされます。
+最後の 2 つのコマンドは、`lib/` の型コメントから `sig/generated/` に RBS シグネチャを書き出し、`lib/` をそれに照らして検査します。
 詳しくは [AGENTS.md](AGENTS.md) にあります。
 
 ## ライセンス

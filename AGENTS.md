@@ -29,6 +29,7 @@ This repository is intended for public release. Write all committed text in Engl
 - Tests prove behavior by running holdfast on the fixture app. A test never greps source.
 - A change to a suspicion form or a row changes `skills/holdfast/SKILL.md` in the same commit, and every YAML example there runs in `test/skill_examples_test.rb`. A change to README.md changes README.ja.md in the same commit: natural Japanese, one sentence per line, no em dash. The output in both READMEs comes from a real run on the fixture.
 - Every change that a gem user can notice adds a line under `## [Unreleased]` in `CHANGELOG.md`.
+- A change to lib/ keeps `steep check` green and regenerates sig. The types live in `#:` and `# @rbs` comments in lib/; `sig/generated/` is written from them and committed. Hand-written stubs of other gems' classes, and corrections to the core signatures, go in `sig-deps/`, which the gem does not ship.
 - A release, a gem push, and a change of the repository's visibility are the owner's to run.
 
 ## Commands
@@ -38,10 +39,12 @@ bundle install
 bundle install --gemfile test/fixture/clinic/Gemfile
 DB_HOST=localhost DB_PORT=5432 ruby -Ilib test/run.rb
 gem build holdfast.gemspec
+bundle exec rbs-inline --output=sig/generated lib
+bundle exec steep check
 ```
 
 `test/run.rb` runs every test file. `test/check_parse_test.rb` needs no database. `test/skill_examples_test.rb` and `test/hunt_test.rb` copy the clinic fixture to a temporary directory, commit it, and run `bin/holdfast` there with the fixture's own bundle. They need a PostgreSQL server at `DB_HOST` and `DB_PORT` (user `DB_USER`, default `postgres`, with no password), the fixture's gems, and hegeltest installed for the same Ruby. Without `DB_HOST` they skip; `HOLDFAST_PG=required` turns the skip into a failure, as CI does. `test/sqlite_test.rb` moves the fixture to SQLite and runs the same examples and a hunt; it needs the sqlite3 gem installed for the same Ruby, skips without it, and fails instead with `HOLDFAST_SQLITE=required`. They take about 40 seconds.
 
-CI (`.github/workflows/ci.yml`) runs the tests on Ruby 3.4 and 4.0 with a PostgreSQL 16 service, and builds the gem.
+CI (`.github/workflows/ci.yml`) runs the tests on Ruby 3.4 and 4.0 with a PostgreSQL 16 service, and builds the gem. Its types job, on Ruby 3.4, regenerates `sig/generated/`, fails when that changes a committed file or adds one, and runs `steep check`.
 
 To try a command on the fixture by hand, copy `test/fixture/clinic` somewhere, run `git init` and commit it, add `gem "holdfast", path: "<this checkout>"` to its `Gemfile`, run `bundle install`, and run `bundle exec holdfast check --suspect '...'` with `DB_HOST` and `DB_PORT` set.

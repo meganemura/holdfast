@@ -174,9 +174,11 @@ Races and the hunt run on PostgreSQL and on SQLite. SQLite lets one connection w
 bundle install
 bundle install --gemfile test/fixture/clinic/Gemfile
 DB_HOST=localhost DB_PORT=5432 ruby -Ilib test/run.rb
+bundle exec rbs-inline --output=sig/generated lib
+bundle exec steep check
 ```
 
-Without `DB_HOST`, the tests that run the clinic app skip. [AGENTS.md](AGENTS.md) has the details.
+Without `DB_HOST`, the tests that run the clinic app skip. The last two commands write the RBS signatures in `sig/generated/` from the type comments in `lib/`, and check `lib/` against them. [AGENTS.md](AGENTS.md) has the details.
 
 ## License
 
