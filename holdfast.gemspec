@@ -23,6 +23,11 @@ Gem::Specification.new do |spec|
   spec.files = Dir.chdir(__dir__) do
     `git ls-files -z`.split("\x0").select do |path|
       # sig/ holds the generated signatures; sig-deps/ stays out of the gem.
+      # The runtime and sequences scripts run inside an app's test process,
+      # not under require "holdfast", and their signatures declare top-level
+      # helpers on Object, so a user's own type check never loads them.
+      next false if path.start_with?("sig/generated/holdfast/runtime/", "sig/generated/holdfast/sequences/")
+
       path.start_with?("bin/", "lib/", "sig/", "skills/") || %w[LICENSE README.md README.ja.md].include?(path)
     end
   end
