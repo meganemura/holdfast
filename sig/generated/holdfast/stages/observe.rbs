@@ -16,6 +16,9 @@ module Holdfast
     # words of --intent: one that names it is shown to confirm, any other is
     # unintended.
     module Observe
+      # What one side observed, or why it did not run, and its log.
+      type side = { ?lines: Array[json], ?error: String, log: String }
+
       # The first step of one ordering whose +what+ (outcome, writes or
       # outside) differs; +base+ and +head+ are what each side recorded.
       class Diff < Data
@@ -29,14 +32,14 @@ module Holdfast
 
         attr_reader step(): Integer
 
-        attr_reader base(): untyped
+        attr_reader base(): json_value
 
-        attr_reader head(): untyped
+        attr_reader head(): json_value
 
-        attr_reader args(): untyped
+        attr_reader args(): json_value
 
-        def self.new: (String area, String action, String what, Array[String] seq, Integer step, untyped base, untyped head, untyped args) -> instance
-                    | (area: String, action: String, what: String, seq: Array[String], step: Integer, base: untyped, head: untyped, args: untyped) -> instance
+        def self.new: (String area, String action, String what, Array[String] seq, Integer step, json_value base, json_value head, json_value args) -> instance
+                    | (area: String, action: String, what: String, seq: Array[String], step: Integer, base: json_value, head: json_value, args: json_value) -> instance
 
         def self.members: () -> [ :area, :action, :what, :seq, :step, :base, :head, :args ]
 
@@ -47,8 +50,8 @@ module Holdfast
       def self.run: (Change change, Record record, intent: String?, files: Array[String]) -> Array[Verdict]
 
       # What one side observed, { lines:, log: }, or why it did not run, { error:, log: }.
-      # : (Change change, Record record, Hash[String, String] env, String side, String rev, Array[String] areas, String work) -> Hash[Symbol, untyped]
-      def self.observe_side: (Change change, Record record, Hash[String, String] env, String side, String rev, Array[String] areas, String work) -> Hash[Symbol, untyped]
+      # : (Change change, Record record, Hash[String, String] env, String side, String rev, Array[String] areas, String work) -> side
+      def self.observe_side: (Change change, Record record, Hash[String, String] env, String side, String rev, Array[String] areas, String work) -> side
 
       # : (Array[json] base, Array[json] head) -> Array[Diff]
       def self.compare: (Array[json] base, Array[json] head) -> Array[Diff]
@@ -56,8 +59,8 @@ module Holdfast
       # : (String area, String action, String what, Array[Diff] ds, Array[String] words) -> Verdict
       def self.diff_row: (String area, String action, String what, Array[Diff] ds, Array[String] words) -> Verdict
 
-      # : (untyped) -> String
-      def self.show: (untyped) -> String
+      # : (json_value) -> String
+      def self.show: (json_value) -> String
 
       # : (String target, String kind, String reason, Array[String] evidence, String next_step, ?scope: String?) -> Verdict
       def self.row: (String target, String kind, String reason, Array[String] evidence, String next_step, ?scope: String?) -> Verdict

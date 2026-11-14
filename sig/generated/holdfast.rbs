@@ -5,6 +5,10 @@ module Holdfast
   # result or a hunt table holds. Its values are whatever the file says.
   type json = Hash[String, untyped]
 
+  # One value of such a document, where a reader keeps it whole (a hunt
+  # line's outcome or writes) and only prints or compares it.
+  type json_value = nil | bool | Integer | Float | String | Array[json_value] | Hash[String, json_value]
+
   # A value YAML.safe_load reads with no permitted classes: a suspicion
   # file or a --suspect mapping.
   type yaml = nil | bool | Integer | Float | String | Array[yaml] | Hash[yaml, yaml]
@@ -15,7 +19,7 @@ module Holdfast
   # test => side ("1" base, "2" head) => file => what that test ran on
   # that side: line numbers, or under the "(drew)" and "(arms)" keys the
   # values its inputs wrote and the branch arms it took.
-  type reach = Hash[String, Hash[String, Hash[String, Array[untyped]]]]
+  type reach = Hash[String, Hash[String, Hash[String, Array[json_value]]]]
 
   class Error < StandardError
   end

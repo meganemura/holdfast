@@ -85,9 +85,9 @@ module Holdfast
       DISCARDS: Hash[String, String]
 
       # What a test that left no reach file ran: nothing, on either side.
-      NO_SIDES: Hash[String, Hash[String, Array[untyped]]]
+      NO_SIDES: Hash[String, Hash[String, Array[json_value]]]
 
-      NO_FILES: Hash[String, Array[untyped]]
+      NO_FILES: Hash[String, Array[json_value]]
 
       # @rbs change: Change
       # @rbs record: Record
@@ -102,8 +102,8 @@ module Holdfast
       # tell the examples of a file apart.
       # What one outcome ran on one side ("1" base, "2" head): its own
       # example's lines when they were kept, else its whole file's.
-      # : (reach reach, Outcome outcome, String side) -> Hash[String, Array[untyped]]
-      def self.ran: (reach reach, Outcome outcome, String side) -> Hash[String, Array[untyped]]
+      # : (reach reach, Outcome outcome, String side) -> Hash[String, Array[json_value]]
+      def self.ran: (reach reach, Outcome outcome, String side) -> Hash[String, Array[json_value]]
 
       # : (String) -> reach
       def self.read_reach: (String) -> reach

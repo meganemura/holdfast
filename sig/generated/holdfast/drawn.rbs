@@ -45,7 +45,7 @@ module Holdfast
     COMPARE: Array[Symbol]
 
     # What a test ran in a file it never reached.
-    NONE: Array[untyped]
+    NONE: Array[json_value]
 
     self.@constants: Hash[[ String, String ], Hash[String, json]]
 

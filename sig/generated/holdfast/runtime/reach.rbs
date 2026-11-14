@@ -1,6 +1,6 @@
 # Generated from lib/holdfast/runtime/reach.rb with RBS::Inline
 
-# : Array[untyped]
+# : Array[Holdfast::json_value]
 HOLDFAST_WANTED: Array[String]
 
 HOLDFAST_DREW: Array[String]
@@ -10,13 +10,13 @@ HOLDFAST_DREW: Array[String]
 # is the union of every take.
 HOLDFAST_ROOT: String
 
-HOLDFAST_TOTAL: Hash[String, Hash[String, Array[untyped]]]
+HOLDFAST_TOTAL: Hash[String, Hash[String, Array[Integer | String]]]
 
 # One test file holds examples that agree and examples the change added, so
 # a file's lines cannot say which example drew a new branch. Each example's
 # own lines are kept by the line it is declared on, the line jitcatch
 # reports for it.
-HOLDFAST_EXAMPLES: Hash[Integer?, Hash[String, Hash[String, Array[untyped]]]]
+HOLDFAST_EXAMPLES: Hash[Integer?, Hash[String, Hash[String, Array[Integer | String]]]]
 
 # @rbs module-self RSpec::Core::Example
 module HoldfastRSpecExample : RSpec::Core::Example
@@ -31,5 +31,5 @@ module HoldfastMinitestTest : Minitest::Test
 end
 
 class Object
-  private def holdfast_take: () -> Hash[String, Hash[String, Array[untyped]]]
+  private def holdfast_take: () -> Hash[String, Hash[String, Array[Integer | String]]]
 end

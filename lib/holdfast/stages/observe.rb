@@ -16,6 +16,10 @@ module Holdfast
     # words of --intent: one that names it is shown to confirm, any other is
     # unintended.
     module Observe
+      # @rbs!
+      #   # What one side observed, or why it did not run, and its log.
+      #   type side = { ?lines: Array[json], ?error: String, log: String }
+
       # The first step of one ordering whose +what+ (outcome, writes or
       # outside) differs; +base+ and +head+ are what each side recorded.
       Diff = Data.define(
@@ -24,9 +28,9 @@ module Holdfast
         :what, #: String
         :seq, #: Array[String]
         :step, #: Integer
-        :base, #: untyped
-        :head, #: untyped
-        :args #: untyped
+        :base, #: json_value
+        :head, #: json_value
+        :args #: json_value
       )
 
       #: (Change change, Record record, intent: String?, files: Array[String]) -> Array[Verdict]
@@ -65,7 +69,7 @@ module Holdfast
       end
 
       # What one side observed, { lines:, log: }, or why it did not run, { error:, log: }.
-      #: (Change change, Record record, Hash[String, String] env, String side, String rev, Array[String] areas, String work) -> Hash[Symbol, untyped]
+      #: (Change change, Record record, Hash[String, String] env, String side, String rev, Array[String] areas, String work) -> side
       def self.observe_side(change, record, env, side, rev, areas, work)
         tree = File.join(Dir.mktmpdir("holdfast-observe"), "tree")
         Change.git(change.root, "worktree", "add", "--quiet", "--detach", tree, rev)
@@ -84,7 +88,7 @@ module Holdfast
           File.write(log, out, mode: "a")
           lines += File.readlines(out_file).map { JSON.parse(_1) } if File.file?(out_file)
         end
-        { lines:, log: }
+        { lines:, log: } #: side
       ensure
         if tree && File.directory?(tree)
           system("git", "worktree", "remove", "--force", tree, chdir: change.root, err: File::NULL)
@@ -120,7 +124,7 @@ module Holdfast
         end
       end
 
-      #: (untyped) -> String
+      #: (json_value) -> String
       def self.show(v) = (v.is_a?(String) ? v : JSON.generate(v)).then { _1.size > 400 ? "#{_1[0, 400]}..." : _1 }
 
       #: (String target, String kind, String reason, Array[String] evidence, String next_step, ?scope: String?) -> Verdict

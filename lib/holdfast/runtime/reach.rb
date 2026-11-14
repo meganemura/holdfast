@@ -15,7 +15,7 @@ Coverage.start(lines: true, branches: true, eval: true) unless Coverage.running?
 # Which of the values the change added or removed (HOLDFAST_VALUES, a JSON
 # list) an input drew: a row written with that value. Reads do not count: a
 # scope that selects by a constant puts every member in each query.
-holdfast_values = JSON.parse(ENV.fetch("HOLDFAST_VALUES", "[]")) rescue [] #: Array[untyped]
+holdfast_values = JSON.parse(ENV.fetch("HOLDFAST_VALUES", "[]")) rescue [] #: Array[Holdfast::json_value]
 HOLDFAST_WANTED = holdfast_values.map(&:to_s) #: Array[String]
 HOLDFAST_DREW = [] #: Array[String]
 unless HOLDFAST_WANTED.empty?
@@ -41,10 +41,10 @@ end
 # for the app's own files. Each take clears the counts, so the file's total
 # is the union of every take.
 HOLDFAST_ROOT = "#{Dir.pwd}/" #: String
-HOLDFAST_TOTAL = { "hits" => Hash.new { |h, k| h[k] = [] }, "arms" => Hash.new { |h, k| h[k] = [] } } #: Hash[String, Hash[String, Array[untyped]]]
+HOLDFAST_TOTAL = { "hits" => Hash.new { |h, k| h[k] = [] }, "arms" => Hash.new { |h, k| h[k] = [] } } #: Hash[String, Hash[String, Array[Integer | String]]]
 # @rbs!
 #   class Object
-#     private def holdfast_take: () -> Hash[String, Hash[String, Array[untyped]]]
+#     private def holdfast_take: () -> Hash[String, Hash[String, Array[Integer | String]]]
 #   end
 def holdfast_take
   hits = {} #: Hash[String, Array[Integer]]
@@ -70,7 +70,7 @@ end
 # a file's lines cannot say which example drew a new branch. Each example's
 # own lines are kept by the line it is declared on, the line jitcatch
 # reports for it.
-HOLDFAST_EXAMPLES = {} #: Hash[Integer?, Hash[String, Hash[String, Array[untyped]]]]
+HOLDFAST_EXAMPLES = {} #: Hash[Integer?, Hash[String, Hash[String, Array[Integer | String]]]]
 # @rbs module-self RSpec::Core::Example
 module HoldfastRSpecExample
   #: (*untyped) -> untyped

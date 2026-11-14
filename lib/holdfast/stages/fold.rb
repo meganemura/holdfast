@@ -96,7 +96,7 @@ module Holdfast
       #: (Target reader, Target t) -> bool
       def self.within?(reader, t) = reader.file == t.file && t.span["new_start"] && (t.span["new_start"]..t.span["new_end"]).cover?(reader.line)
 
-      #: (Diff::Result diff, Diff::Outcome outcome, String side, String file) -> Array[Integer]
+      #: (Diff::Result diff, Diff::Outcome outcome, String side, String file) -> Array[json_value]
       def self.hits(diff, outcome, side, file) = Diff.ran(diff.reach, outcome, side == "base" ? "1" : "2").fetch(file, Drawn::NONE)
 
       #: (Diff::Result diff, Diff::Outcome outcome, Target t, changed_lines lines) -> bool
@@ -222,7 +222,7 @@ module Holdfast
       end
 
       # +value+ is the changed value the readers read, as jitcatch names it.
-      #: (untyped value, Array[Target] readers, Diff::Result diff, owners owner, Change change) -> Verdict
+      #: (String value, Array[Target] readers, Diff::Result diff, owners owner, Change change) -> Verdict
       def self.value_row(value, readers, diff, owner, change)
         ran = diff.outcomes.each_with_index.select { |o, _| readers.any? { reads_line?(diff, o, _1) } }
         bad = ran.select { |o, i| o.kind == "unintended_change" && owner[i].nil? }.map(&:first)

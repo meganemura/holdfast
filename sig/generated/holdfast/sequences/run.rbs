@@ -4,9 +4,13 @@ LIB: String
 
 RANK: Hash[String, Integer]
 
+# One area's run: its files, how its process ended, and the report it
+# wrote, which is the JSON of Sequences.explore_cases.
+type area_result = { file: String, log: String, seconds: Integer, status: Process::Status | :timeout, report: Holdfast::json? }
+
 class Object
-  private def hint: (untyped text, Array[untyped] params) -> String
-  private def clean_refusal: (untyped text) -> String?
-  private def scope: (Hash[String, untyped] report) -> [ Integer, Integer, Array[String] ]
-  private def verdict: (Hash[Symbol, untyped] r, Integer limit) -> [ String, String, String ]
+  private def hint: (Holdfast::json_value text, Array[Holdfast::json_value] params) -> String
+  private def clean_refusal: (Holdfast::json_value text) -> String?
+  private def scope: (Holdfast::json report) -> [ Integer, Integer, Array[String] ]
+  private def verdict: (area_result r, Integer limit) -> [ String, String, String ]
 end

@@ -35,8 +35,8 @@ module Holdfast
       # : (Target reader, Target t) -> bool
       def self.within?: (Target reader, Target t) -> bool
 
-      # : (Diff::Result diff, Diff::Outcome outcome, String side, String file) -> Array[Integer]
-      def self.hits: (Diff::Result diff, Diff::Outcome outcome, String side, String file) -> Array[Integer]
+      # : (Diff::Result diff, Diff::Outcome outcome, String side, String file) -> Array[json_value]
+      def self.hits: (Diff::Result diff, Diff::Outcome outcome, String side, String file) -> Array[json_value]
 
       # : (Diff::Result diff, Diff::Outcome outcome, Target t, changed_lines lines) -> bool
       def self.reached?: (Diff::Result diff, Diff::Outcome outcome, Target t, changed_lines lines) -> bool
@@ -67,8 +67,8 @@ module Holdfast
       def self.pin_details: (Fill::Pins) -> Array[String]
 
       # +value+ is the changed value the readers read, as jitcatch names it.
-      # : (untyped value, Array[Target] readers, Diff::Result diff, owners owner, Change change) -> Verdict
-      def self.value_row: (untyped value, Array[Target] readers, Diff::Result diff, owners owner, Change change) -> Verdict
+      # : (String value, Array[Target] readers, Diff::Result diff, owners owner, Change change) -> Verdict
+      def self.value_row: (String value, Array[Target] readers, Diff::Result diff, owners owner, Change change) -> Verdict
 
       # : (Diff::Outcome) -> Verdict
       def self.stray_row: (Diff::Outcome) -> Verdict

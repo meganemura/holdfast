@@ -39,7 +39,8 @@ module Holdfast
 
     # The options by name; each holds the type its flag parses to.
     # @rbs!
-    #   type options = Hash[Symbol, untyped]
+    #   type options = { repo: String, named: Array[String], only: Array[String], suspects: Array[String], ?base: String, ?intent: String,
+    #                    ?learn: bool, ?sequences: bool, ?observe: bool, ?budget: Integer, ?here: bool }
 
     #: (Array[String]) -> Integer
     def self.start(argv)

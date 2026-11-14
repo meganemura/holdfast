@@ -54,8 +54,8 @@ module Holdfast
         "timeout" => "the test timed out on one side"
       }.freeze #: Hash[String, String]
       # What a test that left no reach file ran: nothing, on either side.
-      NO_SIDES = Hash.new.freeze #: Hash[String, Hash[String, Array[untyped]]]
-      NO_FILES = Hash.new.freeze #: Hash[String, Array[untyped]]
+      NO_SIDES = Hash.new.freeze #: Hash[String, Hash[String, Array[json_value]]]
+      NO_FILES = Hash.new.freeze #: Hash[String, Array[json_value]]
 
       # @rbs change: Change
       # @rbs record: Record
@@ -85,7 +85,7 @@ module Holdfast
       # tell the examples of a file apart.
       # What one outcome ran on one side ("1" base, "2" head): its own
       # example's lines when they were kept, else its whole file's.
-      #: (reach reach, Outcome outcome, String side) -> Hash[String, Array[untyped]]
+      #: (reach reach, Outcome outcome, String side) -> Hash[String, Array[json_value]]
       def self.ran(reach, outcome, side)
         own = "#{outcome.source.path}:#{outcome.test["line"]}"
         (reach.key?(own) && reach[own].key?(side) ? reach[own] : reach.fetch(outcome.source.path, NO_SIDES)).fetch(side, NO_FILES)

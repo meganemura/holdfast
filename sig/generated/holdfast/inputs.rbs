@@ -64,17 +64,17 @@ module Holdfast
     # hegel draws the values; integer ranges also get each boundary literal of
     # the target, one below it and one above it, so every side of a
     # comparison the method makes gets at least one input.
-    # : (Hash[String, json] draws, Integer cases, Integer seed) -> Array[Hash[String, untyped]]
-    def drawn_values: (Hash[String, json] draws, Integer cases, Integer seed) -> Array[Hash[String, untyped]]
+    # : (Hash[String, json] draws, Integer cases, Integer seed) -> Array[Hash[String, json_value]]
+    def drawn_values: (Hash[String, json] draws, Integer cases, Integer seed) -> Array[Hash[String, json_value]]
 
     # : (json kind) -> Hegel::Generator
     def generator: (json kind) -> Hegel::Generator
 
     # A JSON value of any shape, with each draw filled in.
-    # : (untyped value, Hash[String, untyped] names) -> untyped
-    def fill: (untyped value, Hash[String, untyped] names) -> untyped
+    # : (json_value value, Hash[String, json_value] names) -> json_value
+    def fill: (json_value value, Hash[String, json_value] names) -> json_value
 
-    # : (String condition, Hash[String, untyped] names) -> bool
-    def condition_holds?: (String condition, Hash[String, untyped] names) -> bool
+    # : (String condition, Hash[String, json_value] names) -> bool
+    def condition_holds?: (String condition, Hash[String, json_value] names) -> bool
   end
 end

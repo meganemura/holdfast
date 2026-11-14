@@ -32,7 +32,7 @@ module Holdfast
     end
     COMPARE = %i[== != === include? in? eql?].freeze #: Array[Symbol]
     # What a test ran in a file it never reached.
-    NONE = Array.new.freeze #: Array[untyped]
+    NONE = Array.new.freeze #: Array[json_value]
 
     # @rbs self.@constants: Hash[[String, String], Hash[String, json]]
 

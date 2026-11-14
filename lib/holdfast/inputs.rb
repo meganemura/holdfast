@@ -62,7 +62,7 @@ module Holdfast
       draws = spec.fetch("draws") { raise Holdfast::Error, "#{file} generate[#{index}] has no \"draws\"" }
       values = drawn_values(draws, spec.fetch("cases", 20), SEED + index)
       values.uniq.map do |names|
-        input = fill(spec.except(*OWN_KEYS), names)
+        input = fill(spec.except(*OWN_KEYS), names) #: json
         change = spec["change_when"] ? condition_holds?(spec["change_when"], names) : spec["change"] == true
         note = "drawn #{names.map { "#{_1}=#{_2.inspect}" }.join(", ")}"
         Entry.new(input: input.merge("note" => note), change:, note:)
@@ -72,7 +72,7 @@ module Holdfast
     # hegel draws the values; integer ranges also get each boundary literal of
     # the target, one below it and one above it, so every side of a
     # comparison the method makes gets at least one input.
-    #: (Hash[String, json] draws, Integer cases, Integer seed) -> Array[Hash[String, untyped]]
+    #: (Hash[String, json] draws, Integer cases, Integer seed) -> Array[Hash[String, json_value]]
     def drawn_values(draws, cases, seed)
       finite = draws.values.map { _1["one_of"] || (_1["booleans"] && [true, false]) }
       # A small finite space is listed whole; a random draw from it repeats.
@@ -81,7 +81,7 @@ module Holdfast
       end
 
       require "hegel"
-      found = [] #: Array[Hash[String, untyped]]
+      found = [] #: Array[Hash[String, json_value]]
       Hegel.test(test_cases: cases, derandomize: true, seed:, verbosity: :quiet) do |tc|
         found << draws.to_h { |name, kind| [name, tc.draw(generator(kind))] }
       end
@@ -104,7 +104,7 @@ module Holdfast
     end
 
     # A JSON value of any shape, with each draw filled in.
-    #: (untyped value, Hash[String, untyped] names) -> untyped
+    #: (json_value value, Hash[String, json_value] names) -> json_value
     def fill(value, names)
       case value
       when Hash
@@ -117,7 +117,7 @@ module Holdfast
       end
     end
 
-    #: (String condition, Hash[String, untyped] names) -> bool
+    #: (String condition, Hash[String, json_value] names) -> bool
     def condition_holds?(condition, names)
       scope = Object.new
       names.each { |name, v| scope.define_singleton_method(name) { v } }

@@ -53,18 +53,22 @@ puts "seeds #{seeds}, #{cases} cases each, #{files.size} areas, #{jobs} at a tim
 
 queue = Queue.new
 files.each { queue << it }
-results = {} #: Hash[String, Hash[Symbol, untyped]]
+results = {} #: Hash[String, area_result]
 running = {} #: Hash[String, Float]
 lock = Mutex.new
 
 # Each refusal names what to change: a param the text mentions, or the kind
 # of input a refusal like it needs.
 # @rbs!
+#   # One area's run: its files, how its process ended, and the report it
+#   # wrote, which is the JSON of Sequences.explore_cases.
+#   type area_result = { file: String, log: String, seconds: Integer, status: Process::Status | :timeout, report: Holdfast::json? }
+#
 #   class Object
-#     private def hint: (untyped text, Array[untyped] params) -> String
-#     private def clean_refusal: (untyped text) -> String?
-#     private def scope: (Hash[String, untyped] report) -> [Integer, Integer, Array[String]]
-#     private def verdict: (Hash[Symbol, untyped] r, Integer limit) -> [String, String, String]
+#     private def hint: (Holdfast::json_value text, Array[Holdfast::json_value] params) -> String
+#     private def clean_refusal: (Holdfast::json_value text) -> String?
+#     private def scope: (Holdfast::json report) -> [Integer, Integer, Array[String]]
+#     private def verdict: (area_result r, Integer limit) -> [String, String, String]
 #   end
 def hint(text, params)
   low = text.to_s.downcase
@@ -176,7 +180,7 @@ jobs.times.map do |i|
         Process.kill("TERM", -pid)
         Process.wait(pid)
         :timeout
-      end
+      end #: Process::Status | :timeout
       seconds = (now.() - t0).round
       lock.synchronize do
         running.delete(name)
@@ -196,7 +200,7 @@ heartbeat.kill
 
 rows = results.map do |name, r|
   kind, reached, text = verdict(r, limit)
-  [name, kind, reached, text, r] #: [String, String, String, String, Hash[Symbol, untyped]]
+  [name, kind, reached, text, r] #: [String, String, String, String, area_result]
 end.sort_by { |name, kind, *| [RANK.fetch(kind), name] }
 width = rows.map { it[0].size }.max
 puts format("%-#{width}s  %-7s  %s", "area", "reached", "verdict")
