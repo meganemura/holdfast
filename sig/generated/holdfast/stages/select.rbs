@@ -37,8 +37,8 @@ module Holdfast
     def self.new: (name: String, kind: String, file: String, line: Integer, why: Array[String], tests: Array[String], source: String?, reader: json?, span: json, ?reads: json?) -> instance
                 | ...
 
-    # : (?reads: json?, **untyped rest) -> void
-    def initialize: (?reads: json?, **untyped rest) -> void
+    # : (?reads: json?, **(String | Integer | Array[String] | json | nil) rest) -> void
+    def initialize: (?reads: json?, **String | Integer | Array[String] | json | nil rest) -> void
 
     # : () -> bool
     def caller?: () -> bool

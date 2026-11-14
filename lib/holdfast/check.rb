@@ -502,7 +502,7 @@ module Holdfast
     #: (json c) -> String
     def self.check_line(c) = "#{c["expect"]} #{c["holds"] ? "holds" : "fails"}#{" (#{c["observed"]})" if c["observed"]}#{": #{c["failed"].join("; ")}" if c["failed"]}"
 
-    #: (Suspicion s, Hash[String, untyped] reports, Change change, Hash[String, String?] sides, Record record, Place place) -> Verdict
+    #: (Suspicion s, Hash[String, json] reports, Change change, Hash[String, String?] sides, Record record, Place place) -> Verdict
     def self.row(s, reports, change, sides, record, place)
       head = side_result(reports["head"], s)
       evidence = [] #: Array[String]

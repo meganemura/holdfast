@@ -23,7 +23,7 @@ module Holdfast
     #                  source: String?, reader: json?, span: json, ?reads: json?) -> instance
     #               | ...
 
-    #: (?reads: json?, **untyped rest) -> void
+    #: (?reads: json?, **(String | Integer | Array[String] | json | nil) rest) -> void
     def initialize(reads: nil, **rest) = super(reads:, **rest)
     #: () -> bool
     def caller? = why.first == "caller"

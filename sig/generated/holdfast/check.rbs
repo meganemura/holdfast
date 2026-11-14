@@ -187,7 +187,7 @@ module Holdfast
     # : (json c) -> String
     def self.check_line: (json c) -> String
 
-    # : (Suspicion s, Hash[String, untyped] reports, Change change, Hash[String, String?] sides, Record record, Place place) -> Verdict
-    def self.row: (Suspicion s, Hash[String, untyped] reports, Change change, Hash[String, String?] sides, Record record, Place place) -> Verdict
+    # : (Suspicion s, Hash[String, json] reports, Change change, Hash[String, String?] sides, Record record, Place place) -> Verdict
+    def self.row: (Suspicion s, Hash[String, json] reports, Change change, Hash[String, String?] sides, Record record, Place place) -> Verdict
   end
 end
