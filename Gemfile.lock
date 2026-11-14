@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    holdfast (0.1.0)
+    holdfast (0.2.0)
       branchout (~> 0.1)
       hegeltest (= 0.5.1)
       jitcatch (~> 0.1)
@@ -73,7 +73,7 @@ CHECKSUMS
   hegeltest (0.5.1-aarch64-linux) sha256=8ea9004140a13fbd00b087295f8f26beb66ac5ea07ce3d1d251030b6f612960a
   hegeltest (0.5.1-arm64-darwin) sha256=c8865214eec3159a0412e9a07a457d830eb3e0a9e19a5dc33afb898fe876aac0
   hegeltest (0.5.1-x86_64-linux) sha256=7239514bc398865e103aed97c96ae2cec8bbdb399eb1424b428b4f10dff69c57
-  holdfast (0.1.0)
+  holdfast (0.2.0)
   jitcatch (0.1.0) sha256=8032f6c3ef9e78340a50806cc33b4ad54761c3c36f6c0109df147b0690e2e0a5
   minitest (6.0.6) sha256=153ea36d1d987a62942382b61075745042a2b3123b1cd48f4c3675af9cc7d6f1
   prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
