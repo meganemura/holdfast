@@ -43,6 +43,7 @@ module ActiveRecord
   class Base
     def self.connection: () -> untyped
     def self.connection_pool: () -> untyped
+    def self.table_name: () -> String
     def self.transaction: (**untyped) { () -> untyped } -> untyped
     def self.prepend: (*Module) -> untyped
     def self.descendants: () -> Array[untyped]
@@ -58,7 +59,7 @@ module ActiveRecord
   end
   class Relation
     def self.prepend: (*Module) -> untyped
-    def records: () -> Array[untyped]
+    def records: () -> Array[ActiveRecord::Base]
     def klass: () -> untyped
   end
   class Rollback < StandardError
@@ -189,5 +190,19 @@ module Rack
     class UploadedFile
       def initialize: (*untyped, **untyped) -> void
     end
+  end
+end
+
+# The time zone conversion ActiveSupport adds to Time.
+class Time
+  def in_time_zone: (?untyped zone) -> untyped
+end
+
+# The relation a job held after its batch load, asked again for a row.
+module ActiveRecord
+  class Relation
+    def except: (*Symbol) -> Relation
+    def where: (*untyped, **untyped) -> Relation
+    def exists?: () -> bool
   end
 end

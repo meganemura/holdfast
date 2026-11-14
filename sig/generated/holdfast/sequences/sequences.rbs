@@ -9,14 +9,60 @@ module Sequences
   # found in a second spent the rest of a 150 s area shrinking the world.
   SHRINK_SECONDS: Integer
 
+  # One step of a log. +args+ takes a shape of its own for each kind of
+  # step (a choice, the world sizes, the two choices of an interleave),
+  # and a replay reads entries a person pasted, so it stays untyped.
   type entry = Hash[Symbol, untyped]
+
+  # How an action's param is drawn: a pool or a kind of value (:text,
+  # :local_date, :local_time) by name, an integer range, a list of the
+  # values the area wrote, or an end drawn from its start.
+  type param_spec = Symbol | Range[Integer] | Array[untyped] | After
+
+  # A day edge in a zone, some days from the clock: indexes into
+  # ZONES_FOR_DAY_EDGES and BOUNDARY_TIMES.
+  type day_choice = { zone: Integer, days: Integer, time: Integer }
+
+  # A tick of the clock: a day edge, or (+stored+) one near a date the app stored.
+  type tick_choice = { zone: Integer, days: Integer, time: Integer, stored: Integer? }
+
+  # A row an action held after its batch load: its class, its id, and
+  # its state column with the value it had.
+  type loaded_row = [ singleton(ActiveRecord::Base), untyped, [ String, untyped ]? ]
+
+  # The handoff between a held action and the main thread.
+  type gate = { point: Symbol?, paused: Thread::Queue, go: Thread::Queue, passed: bool, ?relation: ActiveRecord::Relation, ?loaded: Array[loaded_row] }
+
+  # What the probe saw one action do.
+  type action_stats = { writes: Hash[String, Integer], reads: Hash[String, Integer], outcomes: Hash[String, Integer], errors: Hash[String, Integer], refusals: Array[String], runs: Integer, ?outside: Array[String] }
+
+  # The blocks an area writes. Each runs with the world as self (or the
+  # definition, for a shared block), and what an invariant, a pool or an
+  # action returns is the area's own value.
+  type world_block = ^() [self: Context] -> void
+
+  type invariant_block = ^() [self: Context] -> untyped
+
+  type pool_block = ^() -> untyped
+
+  type action_block = ^(**untyped) [self: Context] -> untyped
+
+  type shared_block = ^() [self: Definition] -> void
+
+  # How a step ended: a kind of outcome in words, or each side of an interleave.
+  type outcome = String | { first: String?, second: String?, ?paused: bool, ?second_blocked: bool }
+
+  # The id counters (each [sequence, last value, called]) and each fake
+  # with its instance variables, saved before a trial; a fake is the
+  # area's own object.
+  type outside_state = [ Array[Array[untyped]], Array[[ Object, Hash[Symbol, untyped] ]] ]
 
   interface _Draw
     def index: (Integer size) -> Integer
 
     def int: (Range[Integer] range) -> Integer
 
-    def assume: (bool ok) -> untyped
+    def assume: (bool ok) -> void
   end
 
   self.@network_calls: Hash[String, Array[String]]
@@ -29,7 +75,7 @@ module Sequences
 
   self.@examples: Hash[String, Hash[String, Integer]]?
 
-  self.@shared: Array[untyped]
+  self.@shared: Array[shared_block]
 
   self.@outside_callers: Set[Symbol]
 
@@ -76,8 +122,8 @@ module Sequences
   # : () -> Hash[String, Array[String]]
   def self.network_calls: () -> Hash[String, Array[String]]
 
-  # : (untyped host, untyped port) -> void
-  def self.real_network!: (untyped host, untyped port) -> void
+  # : (String? host, Integer | String | nil port) -> void
+  def self.real_network!: (String? host, Integer | String | nil port) -> void
 
   # @rbs module-self TCPSocket
   module NetworkGate : TCPSocket
@@ -101,8 +147,8 @@ module Sequences
 
     attr_reader points: Hash[[ Symbol, Module, Symbol ], bool]
 
-    # : (Symbol name, Module klass, Symbol method_name) -> untyped
-    def self.define: (Symbol name, Module klass, Symbol method_name) -> untyped
+    # : (Symbol name, Module klass, Symbol method_name) -> void
+    def self.define: (Symbol name, Module klass, Symbol method_name) -> void
   end
 
   # `pause_at: :batch_load` holds a job right after its first query that
@@ -113,24 +159,24 @@ module Sequences
     # Only the outermost load pauses: `includes(:copy)` loads the copies
     # inside the transfers' load, and holding there held the job on the
     # copies it preloads, not on the rows it acts on.
-    # : () -> Array[untyped]
-    def records: () -> Array[untyped]
+    # : () -> Array[ActiveRecord::Base]
+    def records: () -> Array[ActiveRecord::Base]
   end
 
   STATE_COLUMNS: Array[String]
 
-  # : (untyped record) -> [String, untyped]?
-  def self.state_of: (untyped record) -> [ String, untyped ]?
+  # : (ActiveRecord::Base record) -> [String, untyped]?
+  def self.state_of: (ActiveRecord::Base record) -> [ String, untyped ]?
 
   class Action < Struct[untyped]
     attr_accessor name: Symbol
-    attr_accessor params: Hash[Symbol, untyped]
+    attr_accessor params: Hash[Symbol, param_spec]
     attr_accessor pause_at: Symbol?
     attr_accessor weight: Numeric
-    attr_accessor block: untyped
+    attr_accessor block: action_block
     attr_accessor failures: Array[Symbol]
     attr_accessor fresh: Array[Symbol]
-    def self.new: (name: Symbol, params: Hash[Symbol, untyped], pause_at: Symbol?, weight: Numeric, block: untyped, failures: Array[Symbol], fresh: Array[Symbol]) -> Action
+    def self.new: (name: Symbol, params: Hash[Symbol, param_spec], pause_at: Symbol?, weight: Numeric, block: action_block, failures: Array[Symbol], fresh: Array[Symbol]) -> Action
   end
 
   # An end drawn from its start: `ends_at: after(:starts_at, minutes: [...])`.
@@ -155,24 +201,24 @@ module Sequences
   end
 
   # The blocks an area's definition passes (setup, pools, invariants,
-  # failures) run with another self and take what the area wrote, so they
-  # stay untyped.
+  # failures) run with another self and return what the area wrote, so
+  # what they return stays untyped.
   class Definition
     @default_pause: Symbol?
 
     @helpers: Module
 
-    @setup: untyped
+    @setup: world_block
 
     attr_reader name: String | Symbol
 
     attr_reader actions: Hash[Symbol, Action]
 
-    attr_reader invariants: Hash[Symbol, untyped]
+    attr_reader invariants: Hash[Symbol, invariant_block]
 
     attr_reader refusal_classes: Array[Module]
 
-    attr_reader pools: Hash[Symbol, untyped]
+    attr_reader pools: Hash[Symbol, pool_block]
 
     attr_reader zones: Array[String]
 
@@ -184,21 +230,21 @@ module Sequences
 
     attr_reader skipped: Hash[Symbol, String]
 
-    attr_reader failures: Hash[Symbol, untyped]
+    attr_reader failures: Hash[Symbol, world_block]
 
     attr_reader twin_pairs: Array[[ Symbol, Symbol, String ]]
 
     # : (String | Symbol name, ?shared: bool) -> void
     def initialize: (String | Symbol name, ?shared: bool) -> void
 
-    # : () { () -> untyped } -> untyped
-    def setup: () { () -> untyped } -> untyped
+    # : () { () [self: Context] -> void } -> world_block
+    def setup: () { () [self: Context] -> void } -> world_block
 
-    # : (Context ctx) -> untyped
-    def run_setup: (Context ctx) -> untyped
+    # : (Context ctx) -> void
+    def run_setup: (Context ctx) -> void
 
-    # : (Symbol name) { () -> untyped } -> untyped
-    def pool: (Symbol name) { () -> untyped } -> untyped
+    # : (Symbol name) { () -> untyped } -> pool_block
+    def pool: (Symbol name) { () -> untyped } -> pool_block
 
     # : () ?{ (Module) [self: Module] -> untyped } -> untyped
     def helpers: () ?{ (Module) [self: Module] -> untyped } -> untyped
@@ -211,8 +257,8 @@ module Sequences
     # : (*Module classes) -> Array[Module]
     def refusals: (*Module classes) -> Array[Module]
 
-    # : (Symbol name) { () -> untyped } -> untyped
-    def invariant: (Symbol name) { () -> untyped } -> untyped
+    # : (Symbol name) { () [self: Context] -> untyped } -> invariant_block
+    def invariant: (Symbol name) { () [self: Context] -> untyped } -> invariant_block
 
     # : (*(String | Symbol) columns) -> Array[String]
     def ignore: (*String | Symbol columns) -> Array[String]
@@ -228,18 +274,18 @@ module Sequences
 
     # Starts the clock and turns on the boundary-biased tick rule and the
     # process time-zone replay.
-    # : (start: untyped, ?zones: Array[String], ?weight: Numeric) -> Numeric
-    def clock: (start: untyped, ?zones: Array[String], ?weight: Numeric) -> Numeric
+    # : (start: Array[Integer], ?zones: Array[String], ?weight: Numeric) -> Numeric
+    def clock: (start: Array[Integer], ?zones: Array[String], ?weight: Numeric) -> Numeric
 
     # An action with a :TODO param does not run; the report lists it with
     # the params to fill, and the rest of the area still runs.
-    # : (Symbol name, ?pause_at: Symbol?, ?weight: Numeric, ?failures: Array[Symbol], ?fresh: Array[Symbol], **untyped params) ?{ (?) -> untyped } -> untyped
-    def action: (Symbol name, ?pause_at: Symbol?, ?weight: Numeric, ?failures: Array[Symbol], ?fresh: Array[Symbol], **untyped params) ?{ (?) -> untyped } -> untyped
+    # : (Symbol name, ?pause_at: Symbol?, ?weight: Numeric, ?failures: Array[Symbol], ?fresh: Array[Symbol], **param_spec params) { (**untyped) [self: Context] -> untyped } -> (String | Action)
+    def action: (Symbol name, ?pause_at: Symbol?, ?weight: Numeric, ?failures: Array[Symbol], ?fresh: Array[Symbol], **param_spec params) { (**untyped) [self: Context] -> untyped } -> (String | Action)
 
     # How an outside service fails: the block arms the fake. An action that
     # lists the failure runs once more as its own step with the fake armed.
-    # : (Symbol name) { () -> untyped } -> untyped
-    def failure: (Symbol name) { () -> untyped } -> untyped
+    # : (Symbol name) { () [self: Context] -> void } -> world_block
+    def failure: (Symbol name) { () [self: Context] -> void } -> world_block
 
     # : () -> Array[Action]
     def pausable: () -> Array[Action]
@@ -248,8 +294,8 @@ module Sequences
     def pause_point: (Action action) -> Symbol?
   end
 
-  # : (String | Symbol name) { () [self: Definition] -> untyped } -> Definition
-  def self.define: (String | Symbol name) { () [self: Definition] -> untyped } -> Definition
+  # : (String | Symbol name) { () [self: Definition] -> void } -> Definition
+  def self.define: (String | Symbol name) { () [self: Definition] -> void } -> Definition
 
   # : () -> Hash[String | Symbol, Definition]
   def self.registry: () -> Hash[String | Symbol, Definition]
@@ -299,10 +345,10 @@ module Sequences
 
   # Draws parameter values (or reads them back from a log on replay).
   class Draw
-    @tc: untyped
+    @tc: Hegel::TestCase
 
-    # : (untyped tc) -> void
-    def initialize: (untyped tc) -> void
+    # : (Hegel::TestCase tc) -> void
+    def initialize: (Hegel::TestCase tc) -> void
 
     # : (Integer size) -> Integer
     def index: (Integer size) -> Integer
@@ -317,17 +363,17 @@ module Sequences
   class Runner
     @dates_sql: String
 
-    @tracked: Hash[untyped, untyped]
+    @tracked: Hash[String, Hash[untyped, { status: untyped, since: Integer, row: Hash[String, untyped] }]]
 
-    @clock: untyped
+    @clock: Time?
 
     @ctx: Context
 
     @definition: Definition
 
-    type choice = Hash[Symbol, untyped]
+    type choice = Hash[Symbol, Integer | day_choice]
 
-    type effect = { accepted: bool, outcome: untyped, rows: Hash[String, Array[Hash[String, untyped]]] }
+    type effect = { accepted: bool, outcome: String, rows: Hash[String, Array[Hash[String, untyped]]] }
 
     attr_reader log: Array[entry]
 
@@ -351,8 +397,8 @@ module Sequences
 
     # A wall-clock time in one of the zones, at a day edge, some days from now:
     # the input a member in another time zone would send.
-    # : (choice choice) -> untyped
-    def local_time: (choice choice) -> untyped
+    # : (day_choice choice) -> untyped
+    def local_time: (day_choice choice) -> untyped
 
     # : (Action action, choice choice, ?offset: String?) -> String
     def describe: (Action action, choice choice, ?offset: String?) -> String
@@ -361,14 +407,14 @@ module Sequences
     # and the state of the fakes, so the step after it runs as if it had not.
     # The outer transaction is not joinable, so the app's own transactions
     # become savepoints, as under transactional tests.
-    # : () { () -> untyped } -> untyped
-    def trial: () { () -> untyped } -> untyped
+    # : [T] () { () -> T } -> T
+    def trial: [T] () { () -> T } -> T
 
     # What a step did, to compare two ways of running it: accepted or refused,
     # and the rows of +tables+ (every table when nil) without ids, times and
     # random tokens.
-    # : (untyped outcome, ?Array[String]? tables) -> effect
-    def effect: (untyped outcome, ?Array[String]? tables) -> effect
+    # : (String outcome, ?Array[String]? tables) -> effect
+    def effect: (String outcome, ?Array[String]? tables) -> effect
 
     NOISE_COLUMN: Regexp
 
@@ -389,8 +435,8 @@ module Sequences
     # : (Action first, choice first_choice, Action second, _Draw draw) -> choice
     def same_inputs: (Action first, choice first_choice, Action second, _Draw draw) -> choice
 
-    # : (untyped spec, untyped value, Hash[Symbol, untyped] values) -> Integer?
-    def choice_for: (untyped spec, untyped value, Hash[Symbol, untyped] values) -> Integer?
+    # : (param_spec spec, untyped value, Hash[Symbol, untyped] values) -> Integer?
+    def choice_for: (param_spec spec, untyped value, Hash[Symbol, untyped] values) -> Integer?
 
     # : (String what, effect a, effect b, String | Symbol a_name, String | Symbol b_name, ?outcome: bool, ?noise: Set[String]) -> void
     def compare!: (String what, effect a, effect b, String | Symbol a_name, String | Symbol b_name, ?outcome: bool, ?noise: Set[String]) -> void
@@ -413,8 +459,8 @@ module Sequences
     # : () -> Array[Date]
     def stored_dates: () -> Array[Date]
 
-    # : (choice choice) -> void
-    def tick: (choice choice) -> void
+    # : (tick_choice choice) -> void
+    def tick: (tick_choice choice) -> void
 
     # Runs +first+ until it reaches its pause point, then runs +second+ to the
     # end (or until it blocks on a database lock), then lets +first+ finish.
@@ -424,19 +470,19 @@ module Sequences
     # A job held after its batch load races only on the rows it loaded, so a
     # second action's record of the same class is moved onto one of them
     # (the first loaded, so a replay picks the same row).
-    # : (Hash[Symbol, untyped] args, Array[[untyped, untyped, untyped]] loaded) -> Hash[Symbol, untyped]
-    def onto_loaded: (Hash[Symbol, untyped] args, Array[[ untyped, untyped, untyped ]] loaded) -> Hash[Symbol, untyped]
+    # : (Hash[Symbol, untyped] args, Array[loaded_row] loaded) -> Hash[Symbol, untyped]
+    def onto_loaded: (Hash[Symbol, untyped] args, Array[loaded_row] loaded) -> Hash[Symbol, untyped]
 
-    # : (Array[[untyped, untyped, untyped]] loaded) -> Hash[[untyped, untyped], [String, untyped]?]
-    def current_states: (Array[[ untyped, untyped, untyped ]] loaded) -> Hash[[ untyped, untyped ], [ String, untyped ]?]
+    # : (Array[loaded_row] loaded) -> Hash[[singleton(ActiveRecord::Base), untyped], [String, untyped]?]
+    def current_states: (Array[loaded_row] loaded) -> Hash[[ singleton(ActiveRecord::Base), untyped ], [ String, untyped ]?]
 
     # A job that loaded a row before another action set its status must not
     # write a status over it that the job's own query would not have picked
     # the row for: that is the job acting on what it read, not on what is
     # there. The query is asked inside a rolled-back trial, with the row put
     # back at the status the other action set.
-    # : (Symbol job, Symbol other, Hash[Symbol, untyped] gate, Hash[[untyped, untyped], [String, untyped]?] between, untyped other_outcome) -> void
-    def stale_overwrite!: (Symbol job, Symbol other, Hash[Symbol, untyped] gate, Hash[[ untyped, untyped ], [ String, untyped ]?] between, untyped other_outcome) -> void
+    # : (Symbol job, Symbol other, gate gate, Hash[[singleton(ActiveRecord::Base), untyped], [String, untyped]?] between, String? other_outcome) -> void
+    def stale_overwrite!: (Symbol job, Symbol other, gate gate, Hash[[ singleton(ActiveRecord::Base), untyped ], [ String, untyped ]?] between, String? other_outcome) -> void
 
     # : (Action action, choice choice) -> String
     def perform: (Action action, choice choice) -> String
@@ -459,8 +505,8 @@ module Sequences
     # entered it, as this run saw them enter (not as a column says). Only rows
     # alike in every column but ids and times are compared: any other
     # column (a party size, a pause date) can be a reason to skip a row.
-    # : (untyped model, from: String, to: String | Array[String], ?group: (String | Symbol)?) -> (true | String)
-    def order_kept: (untyped model, from: String, to: String | Array[String], ?group: (String | Symbol)?) -> (true | String)
+    # : (singleton(ActiveRecord::Base) model, from: String, to: String | Array[String], ?group: (String | Symbol)?) -> (bool | String)
+    def order_kept: (singleton(ActiveRecord::Base) model, from: String, to: String | Array[String], ?group: (String | Symbol)?) -> (bool | String)
 
     # : (?Array[String]? only) -> Hash[String, Array[Hash[String, untyped]]]
     def snapshot: (?Array[String]? only) -> Hash[String, Array[Hash[String, untyped]]]
@@ -478,23 +524,23 @@ module Sequences
 
   TURNED_AWAY: Regexp
 
-  # : (untyped outcome) -> bool
-  def self.turned_away?: (untyped outcome) -> bool
+  # : (outcome? outcome) -> bool
+  def self.turned_away?: (outcome? outcome) -> bool
 
   # : (Exception error) -> bool
   def self.collision?: (Exception error) -> bool
 
-  # : () -> Array[untyped]
-  def self.shared: () -> Array[untyped]
+  # : () -> Array[shared_block]
+  def self.shared: () -> Array[shared_block]
 
-  # : () { () -> untyped } -> Array[untyped]
-  def self.everywhere: () { () -> untyped } -> Array[untyped]
+  # : () { () [self: Definition] -> void } -> Array[shared_block]
+  def self.everywhere: () { () [self: Definition] -> void } -> Array[shared_block]
 
   # The RSpec entry point: generate sequences, shrink a failure, and fail the
   # example with the shortest sequence as a pasteable spec. SEQ_SEEDS=1,2,3
   # runs one seed after another and stops at the first failure.
-  # : (Definition definition, **untyped opts) -> untyped
-  def self.explore: (Definition definition, **untyped opts) -> untyped
+  # : (Definition definition, **Integer? opts) -> void
+  def self.explore: (Definition definition, **Integer? opts) -> void
 
   # : (Definition definition, ?test_cases: Integer, ?step_count: Integer, ?seed: Integer?) -> String
   def self.explore_cases: (Definition definition, ?test_cases: Integer, ?step_count: Integer, ?seed: Integer?) -> String
@@ -519,14 +565,14 @@ module Sequences
 
   # table => {"added" => [...], "changed" => [...], "removed" => [...]}, rows
   # by their non-volatile columns; ids appear only as the row they name.
-  # : (Hash[String, Array[Hash[String, untyped]]] before, Hash[String, Array[Hash[String, untyped]]] after) -> Hash[String, Hash[String, Array[untyped]]]
-  def self.row_changes: (Hash[String, Array[Hash[String, untyped]]] before, Hash[String, Array[Hash[String, untyped]]] after) -> Hash[String, Hash[String, Array[untyped]]]
+  # : (Hash[String, Array[Hash[String, untyped]]] before, Hash[String, Array[Hash[String, untyped]]] after) -> Hash[String, Hash[String, Array[Hash[String, untyped]]]]
+  def self.row_changes: (Hash[String, Array[Hash[String, untyped]]] before, Hash[String, Array[Hash[String, untyped]]] after) -> Hash[String, Hash[String, Array[Hash[String, untyped]]]]
 
-  # : (Definition definition, Integer test_cases, Integer step_count, Integer seed) -> Hash[Symbol, untyped]
-  def self.explore_seed: (Definition definition, Integer test_cases, Integer step_count, Integer seed) -> Hash[Symbol, untyped]
+  # : (Definition definition, Integer test_cases, Integer step_count, Integer seed) -> { seed: Integer, runs: Integer, seconds: Float }
+  def self.explore_seed: (Definition definition, Integer test_cases, Integer step_count, Integer seed) -> { seed: Integer, runs: Integer, seconds: Float }
 
-  # : (Definition definition, untyped tc, Integer step_count, Set[String] noise) -> void
-  def self.run_case: (Definition definition, untyped tc, Integer step_count, Set[String] noise) -> void
+  # : (Definition definition, Hegel::TestCase tc, Integer step_count, Set[String] noise) -> void
+  def self.run_case: (Definition definition, Hegel::TestCase tc, Integer step_count, Set[String] noise) -> void
 
   # What a clean verdict has to have reached: every action, its offset
   # replay, and each pair of doors.
@@ -534,8 +580,8 @@ module Sequences
   def self.checks: (Definition definition) -> Array[Symbol]
 
   # For a drafted invariant: see Runner#order_kept.
-  # : (untyped model, **untyped options) -> (true | String)
-  def self.order_kept: (untyped model, **untyped options) -> (true | String)
+  # : (singleton(ActiveRecord::Base) model, **(String | Symbol | Array[String] | nil) options) -> (bool | String)
+  def self.order_kept: (singleton(ActiveRecord::Base) model, **String | Symbol | Array[String] | nil options) -> (bool | String)
 
   # : (Symbol? action, Module klass) -> void
   def self.reached_outside_call: (Symbol? action, Module klass) -> void
@@ -548,11 +594,11 @@ module Sequences
 
   # What the run reached, so a clean result says what it covered: an action
   # that was only ever refused, or never drawn, checked nothing.
-  # : (Symbol name, untyped outcome) -> void
-  def self.tally: (Symbol name, untyped outcome) -> void
+  # : (Symbol name, outcome? outcome) -> void
+  def self.tally: (Symbol name, outcome? outcome) -> void
 
-  # : (untyped outcome) -> String
-  def self.kind: (untyped outcome) -> String
+  # : (outcome? outcome) -> String
+  def self.kind: (outcome? outcome) -> String
 
   # Plain random draws for the probe: no shrinking, no Hegel.
   class RandomDraw
@@ -574,8 +620,8 @@ module Sequences
   # A random walk over every action with no invariants: the tables each
   # action writes, the outside services it calls, and how it ends. propose.rb
   # groups actions into areas by it.
-  # : (Definition definition, ?walks: Integer, ?steps: Integer, ?seed: Integer) -> Hash[Symbol, Hash[Symbol, untyped]]
-  def self.probe: (Definition definition, ?walks: Integer, ?steps: Integer, ?seed: Integer) -> Hash[Symbol, Hash[Symbol, untyped]]
+  # : (Definition definition, ?walks: Integer, ?steps: Integer, ?seed: Integer) -> Hash[Symbol, action_stats]
+  def self.probe: (Definition definition, ?walks: Integer, ?steps: Integer, ?seed: Integer) -> Hash[Symbol, action_stats]
 
   # : () -> String
   def self.coverage_report: () -> String
@@ -585,11 +631,11 @@ module Sequences
 
   # The fakes are plain objects that remember charges and failures armed; a
   # trial's rollback must undo those too.
-  # : () -> [Array[untyped], Array[untyped]]
-  def self.save_outside_state: () -> [ Array[untyped], Array[untyped] ]
+  # : () -> outside_state
+  def self.save_outside_state: () -> outside_state
 
-  # : (untyped) -> void
-  def self.restore_outside_state: (untyped) -> void
+  # : (outside_state) -> void
+  def self.restore_outside_state: (outside_state) -> void
 
   # : () -> bool
   def self.postgres?: () -> bool
@@ -605,8 +651,8 @@ module Sequences
   # : (Definition definition, Array[entry] entries) -> Array[entry]
   def self.replay: (Definition definition, Array[entry] entries) -> Array[entry]
 
-  # : () -> untyped
-  def self.reset_database: () -> untyped
+  # : () -> void
+  def self.reset_database: () -> void
 
   # A 404 or 422 renders the plain error page, not the developer page:
   # building that page (source extracts, error highlight) took a third of
@@ -620,11 +666,11 @@ module Sequences
   # A schema whose keys form a cycle falls back to TRUNCATE. SQLite has no
   # TRUNCATE and no sequences: DELETE with the foreign keys off, then
   # sqlite_sequence, which holds the ids to restart.
-  # : () -> untyped
-  def self.empty_tables: () -> untyped
+  # : () -> void
+  def self.empty_tables: () -> void
 
-  # : (untyped conn) -> untyped
-  def self.empty_tables_without_truncate: (untyped conn) -> untyped
+  # : (untyped conn) -> void
+  def self.empty_tables_without_truncate: (untyped conn) -> void
 
   # : [T] (String zone) { () -> T } -> T
   def self.with_zone: [T] (String zone) { () -> T } -> T
