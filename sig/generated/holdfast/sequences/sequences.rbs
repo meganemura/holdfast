@@ -341,6 +341,23 @@ module Sequences
 
     # : (Symbol name) -> bool
     def pool?: (Symbol name) -> bool
+
+    # A factory call that fails in `setup` names itself and its line.
+    # Plain defs, not define_method: Steep cannot type `super` in a block and
+    # skips the whole class.
+    # : (*untyped args, **untyped kw) ?{ (untyped) -> untyped } -> untyped
+    def create: (*untyped args, **untyped kw) ?{ (untyped) -> untyped } -> untyped
+
+    # : (*untyped args, **untyped kw) ?{ (untyped) -> untyped } -> untyped
+    def create_list: (*untyped args, **untyped kw) ?{ (untyped) -> untyped } -> untyped
+
+    # : (*untyped args, **untyped kw) ?{ (untyped) -> untyped } -> untyped
+    def build: (*untyped args, **untyped kw) ?{ (untyped) -> untyped } -> untyped
+
+    private
+
+    # : (Symbol factory_call, Array[untyped] args, Hash[Symbol, untyped] kw, StandardError e) -> SetupError
+    def setup_error: (Symbol factory_call, Array[untyped] args, Hash[Symbol, untyped] kw, StandardError e) -> SetupError
   end
 
   # Draws parameter values (or reads them back from a log on replay).

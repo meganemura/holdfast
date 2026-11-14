@@ -23,7 +23,8 @@ unless HOLDFAST_WANTED.empty?
     next unless defined?(ActiveSupport::Notifications)
 
     tp.disable
-    ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+    ActiveSupport::Notifications.subscribe("sql.active_record") do |*event|
+      payload = event.last
       sql = payload[:sql].to_s
       next unless sql.match?(/\A\s*(INSERT|UPDATE)/i)
 

@@ -83,4 +83,12 @@ jobs:
       - name: Check that the committed signatures are current
         run: git add --intent-to-add sig && git diff --exit-code sig
       - name: Check the types
-        run: bundle exec steep check
+        run: |
+          # Steep logs FATAL or ERROR and skips the rest of a method when it
+          # cannot type a node, and still prints "No type error detected".
+          set -o pipefail
+          bundle exec steep check 2>&1 | tee steep.log
+          if grep -E ': (FATAL|ERROR): \[Steep' steep.log; then
+            echo "Steep stopped checking the code on the lines above." >&2
+            exit 1
+          fi

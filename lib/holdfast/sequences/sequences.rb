@@ -394,24 +394,49 @@ def self.[](name) = registry.fetch(name)
     def pool?(name) = @definition.pools.key?(name)
 
     # A factory call that fails in `setup` names itself and its line.
-    %i[create create_list build].each do |factory_call|
-      define_method(factory_call) do |*args, **kw, &blk|
-        # @type self: Context
-        super(*args, **kw, &blk)
-      rescue SetupError
-        raise
-      rescue StandardError => e
-        where = caller_locations.find do
-          path = it.path #: String
-          here = __dir__ #: String
-          path.start_with?(Rails.root.to_s) && !path.start_with?(here) && !path.include?("/spec/support/")
-        end
-        # A record's whole inspect pushed the error itself off the one line a
-        # report shows, so a record is named by its class and id.
-        show = ->(v) { v.is_a?(ActiveRecord::Base) ? "#<#{v.class.name} #{v.id || "new"}>" : v.inspect }
-        call = (args.map(&show) + kw.map { |k, v| "#{k}: #{show.(v)}" }).join(", ")
-        raise SetupError, "#{factory_call}(#{call}) at #{where&.path&.sub("#{Rails.root}/", "")}:#{where&.lineno} failed: #{e.class}: #{e.message}"
+    # Plain defs, not define_method: Steep cannot type `super` in a block and
+    # skips the whole class.
+    #: (*untyped args, **untyped kw) ?{ (untyped) -> untyped } -> untyped
+    def create(*args, **kw, &blk)
+      super
+    rescue SetupError
+      raise
+    rescue StandardError => e
+      raise setup_error(:create, args, kw, e)
+    end
+
+    #: (*untyped args, **untyped kw) ?{ (untyped) -> untyped } -> untyped
+    def create_list(*args, **kw, &blk)
+      super
+    rescue SetupError
+      raise
+    rescue StandardError => e
+      raise setup_error(:create_list, args, kw, e)
+    end
+
+    #: (*untyped args, **untyped kw) ?{ (untyped) -> untyped } -> untyped
+    def build(*args, **kw, &blk)
+      super
+    rescue SetupError
+      raise
+    rescue StandardError => e
+      raise setup_error(:build, args, kw, e)
+    end
+
+    private
+
+    #: (Symbol factory_call, Array[untyped] args, Hash[Symbol, untyped] kw, StandardError e) -> SetupError
+    def setup_error(factory_call, args, kw, e)
+      where = caller_locations.find do
+        path = it.path #: String
+        here = __dir__ #: String
+        path.start_with?(Rails.root.to_s) && !path.start_with?(here) && !path.include?("/spec/support/")
       end
+      # A record's whole inspect pushed the error itself off the one line a
+      # report shows, so a record is named by its class and id.
+      show = ->(v) { v.is_a?(ActiveRecord::Base) ? "#<#{v.class.name} #{v.id || "new"}>" : v.inspect }
+      call = (args.map(&show) + kw.map { |k, v| "#{k}: #{show.(v)}" }).join(", ")
+      SetupError.new("#{factory_call}(#{call}) at #{where&.path&.sub("#{Rails.root}/", "")}:#{where&.lineno} failed: #{e.class}: #{e.message}")
     end
 end
 
@@ -1428,7 +1453,8 @@ end
       none = { writes: Hash.new(0), reads: Hash.new(0), outcomes: Hash.new(0), errors: Hash.new(0), refusals: Array.new, runs: 0 } #: action_stats
       h[k] = none
     end #: Hash[Symbol, action_stats]
-    sub = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+    sub = ActiveSupport::Notifications.subscribe("sql.active_record") do |*event|
+      payload = event.last
       name = Thread.current[:sequences_action] or next
       verb, table = payload[:sql].match(/\A\s*(INSERT INTO|UPDATE|DELETE FROM)\s+"?(\w+)"?/i)&.captures
       stats[name][:writes]["#{verb.split.first.downcase} #{table}"] += 1 if table

@@ -573,16 +573,20 @@ module Propose
       url = path_params(path, params)
       segments = path.scan(/:(\w+)/).flatten.map(&:to_sym)
       auth = controller_auth(controller)
-      body = controller_params(controller, action).filter_map do |key, (kind, attribute)|
+      body = controller_params(controller, action).filter_map do |key, read|
+        kind = read[0]
+        attribute = read[1]
         next if segments.include?(key)
         next "#{key}: ENV[#{auth[:params][key].inspect}]" if auth[:params][key]
 
         if kind == :nested
           form = model_for(key)
-          "#{key}: { #{attribute.map { form_value(form, it, params) }.join(", ")} }"
+          fields = attribute #: Array[Symbol]
+          "#{key}: { #{fields.map { form_value(form, it, params) }.join(", ")} }"
         elsif kind == :nested_list
           form = model_for(key)
-          "#{key}: [{ #{attribute.map { form_value(form, it, params) }.join(", ")} }]"
+          fields = attribute #: Array[Symbol]
+          "#{key}: [{ #{fields.map { form_value(form, it, params) }.join(", ")} }]"
         elsif kind == :upload
           # Drawn text sent as a file, so the action runs past its upload.
           params[key] = :text
