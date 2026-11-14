@@ -173,6 +173,8 @@ module Propose
         key = first.unescaped.to_sym
         at = stack.rindex { it.is_a?(Prism::CallNode) && %i[find find_by find_by!].include?(it.name) && it.receiver.is_a?(Prism::ConstantReadNode) }
         pair = at && stack.drop(at).reverse.find { it.is_a?(Prism::AssocNode) }
+        # A key that is not a literal (`find_by(column => params[:code])`) names no column.
+        column = pair&.key
         model = at && stack[at].receiver.name.to_s.safe_constantize
         dated = stack.last.is_a?(Prism::CallNode) && %i[to_date to_time].include?(stack.last.name)
         outer = (stack.last if stack.last.is_a?(Prism::CallNode) && stack.last.receiver.equal?(node)) #: untyped
@@ -191,7 +193,7 @@ module Propose
                        elsif each_permit
                          [:nested_list, Array(each_permit.arguments&.arguments).grep(Prism::SymbolNode).map { it.unescaped.to_sym }]
                        elsif %i[read original_filename path].include?(outer&.name) then [:upload]
-                       elsif model then [model, pair ? pair.key.unescaped.to_sym : :id]
+                       elsif model then [model, column.is_a?(Prism::SymbolNode) || column.is_a?(Prism::StringNode) ? column.unescaped.to_sym : :id]
                        elsif dated then [:date]
                        elsif model_for(key) then [model_for(key), :id]
                        else [:value]
