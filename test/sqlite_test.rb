@@ -89,6 +89,24 @@ class SqliteTest < Minitest::Test
     end
   end
 
+  # `do` saw no calls list, so `calls(X, :verb)` there raised on nil and
+  # the suspicion could not run.
+  def test_a_do_reads_the_calls_of_its_own_action
+    Dir.mktmpdir("holdfast-sqlite") do |dir|
+      app = sqlite_clinic(dir)
+      File.write(File.join(dir, "calls.yml"), <<~YAML)
+        - says: the sweep charges a missed booking once, counted inside do
+          given: {appointment: {status: booked, starts_at: -20m}}
+          do: "NoShowSweepJob.perform_now; @charged = calls(PaymentGateway, :charge).size"
+          expect: "@charged == 1"
+      YAML
+      out, = holdfast(app, "check", File.join(dir, "calls.yml"), "--here")
+      row = JSON.parse(File.readlines(File.join(app, ".holdfast", "check", "main", "check.jsonl")).first)
+      assert_equal "refuted", row["kind"], "#{row["reason"]}\n#{out}"
+      assert_includes row["reason"], "observed 1", out
+    end
+  end
+
   # Drafting reads every controller of the app, so one form it could not
   # read failed the whole hunt.
   def test_drafting_reads_a_controller_that_permits_nothing_and_finds_by_a_local_key_or_a_splat

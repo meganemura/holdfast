@@ -101,12 +101,25 @@ module HoldfastCheck
   end
   ActiveRecord::Base.prepend(LockGate)
 
+  # Plain defs, not define_method: Steep cannot type `super` in a block and
+  # skips the whole module.
   module WriteGate
-    %i[insert update delete].each do |verb|
-      define_method(verb) do |arel, name = nil, *rest, **kw, &blk|
-        HoldfastCheck.hold(HoldfastCheck.gate, "first_write", "#{verb.to_s.upcase} (#{name || "sql"})")
-        super(arel, name, *rest, **kw, &blk)
-      end
+    #: (untyped arel, ?untyped name, *untyped rest, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+    def insert(arel, name = nil, *rest, **kw, &blk)
+      HoldfastCheck.hold(HoldfastCheck.gate, "first_write", "INSERT (#{name || "sql"})")
+      super
+    end
+
+    #: (untyped arel, ?untyped name, *untyped rest, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+    def update(arel, name = nil, *rest, **kw, &blk)
+      HoldfastCheck.hold(HoldfastCheck.gate, "first_write", "UPDATE (#{name || "sql"})")
+      super
+    end
+
+    #: (untyped arel, ?untyped name, *untyped rest, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+    def delete(arel, name = nil, *rest, **kw, &blk)
+      HoldfastCheck.hold(HoldfastCheck.gate, "first_write", "DELETE (#{name || "sql"})")
+      super
     end
   end
 
@@ -499,14 +512,14 @@ module HoldfastCheck
     # A race runs its actions once per order; no order reads the locals the
     # order before it left.
     shared.local_variables.each { shared.local_variable_set(_1, nil) } if shared
-    calls = Calls.new(call_specs | HoldfastCheck.counted(expects))
+    calls = Calls.new(call_specs | HoldfastCheck.counted(acts.map(&:text) + expects.map(&:text)))
     calls.watch
     HoldfastCheck.watch_outside_calls if pause
     called = [] #: Array[String]
     outcomes = if pause
-                 holdfast_interleave(world, acts, pause)
+                 holdfast_interleave(world, acts, pause, calls)
                else
-                 acts.map { |a| holdfast_traced(trace ? called : nil) { holdfast_step(world.fresh, a, errors:) } }
+                 acts.map { |a| holdfast_traced(trace ? called : nil) { holdfast_step(world.fresh, a, calls, errors:) } }
                end
     holdfast_reached!(expects)
     results = Array.new(acts.size)
@@ -525,10 +538,11 @@ module HoldfastCheck
       "absent" => outcomes.filter_map { _1[:absent] }.first, "checks" => checked, "called" => (called.uniq if trace), "given_ids" => given_ids }.compact
   end
 
-  # Ruby expectations that name `calls(X, :verb)` count those calls too.
-  #: (Array[Expect] expects) -> Array[call_spec]
-  def self.counted(expects)
-    named = expects.flat_map { |e| e.text.scan(/calls\(\s*([A-Z][\w:]*)\s*,\s*:(\w+)\s*\)/) } #: Array[[String, String]]
+  # A `do` or an expectation in Ruby that names `calls(X, :verb)` counts
+  # those calls too.
+  #: (Array[String] texts) -> Array[call_spec]
+  def self.counted(texts)
+    named = texts.flat_map { |text| text.scan(/calls\(\s*([A-Z][\w:]*)\s*,\s*:(\w+)\s*\)/) } #: Array[[String, String]]
     named.uniq.filter_map do |owner, verb|
       [Object.const_get(owner), verb]
     rescue NameError
@@ -652,9 +666,9 @@ module HoldfastCheck
   # means the action never ran as written. In a race, or when `expect`
   # names `error` or `raises`, every error is how the action ended, except
   # a name the tree does not have: that tree cannot run the suspicion.
-  #: (Hash[Symbol, untyped] records, Act act, errors: bool) -> outcome
-  def holdfast_step(records, act, errors:)
-    scope = Scope.new(self, records)
+  #: (Hash[Symbol, untyped] records, Act act, Calls calls, errors: bool) -> outcome
+  def holdfast_step(records, act, calls, errors:)
+    scope = Scope.new(self, records, calls:)
     result = scope.instance_exec(&act.block)
     { result:, scope:, shown: "#{HoldfastCheck.one_line(act.text)} returned #{holdfast_show(result)}" }
   rescue StandardError => e
@@ -683,14 +697,14 @@ module HoldfastCheck
   # The first action runs on its own thread until it reaches the pause point;
   # the second runs to its end (or until it waits on a lock the first holds);
   # then the first goes on.
-  #: (World world, Array[Act] acts, String point) -> Array[outcome]
-  def holdfast_interleave(world, acts, point)
+  #: (World world, Array[Act] acts, String point, Calls calls) -> Array[outcome]
+  def holdfast_interleave(world, acts, point, calls)
     gate = { point:, paused: Queue.new, go: Queue.new, passed: false } #: gate
     first_records, second_records = world.fresh, world.fresh
     outcomes = [] #: Array[outcome]
     t1 = Thread.new do
       Thread.current[:holdfast_gate] = gate
-      ActiveRecord::Base.connection_pool.with_connection { outcomes[0] = holdfast_step(first_records, acts[0], errors: true) }
+      ActiveRecord::Base.connection_pool.with_connection { outcomes[0] = holdfast_step(first_records, acts[0], calls, errors: true) }
     rescue CouldNotRun => e
       outcomes[0] = { error: e, shown: e.message, could_not_run: e }
     ensure
@@ -701,7 +715,7 @@ module HoldfastCheck
     t2 = Thread.new do
       ActiveRecord::Base.connection_pool.with_connection do |conn|
         backend << (conn.raw_connection.backend_pid if conn.raw_connection.respond_to?(:backend_pid))
-        outcomes[1] = holdfast_step(second_records, acts[1], errors: true)
+        outcomes[1] = holdfast_step(second_records, acts[1], calls, errors: true)
       end
     rescue CouldNotRun => e
       outcomes[1] = { error: e, shown: e.message, could_not_run: e }

@@ -64,7 +64,17 @@ module HoldfastCheck
     def lock!: (*untyped) -> untyped
   end
 
+  # Plain defs, not define_method: Steep cannot type `super` in a block and
+  # skips the whole module.
   module WriteGate
+    # : (untyped arel, ?untyped name, *untyped rest, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+    def insert: (untyped arel, ?untyped name, *untyped rest, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+
+    # : (untyped arel, ?untyped name, *untyped rest, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+    def update: (untyped arel, ?untyped name, *untyped rest, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+
+    # : (untyped arel, ?untyped name, *untyped rest, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
+    def delete: (untyped arel, ?untyped name, *untyped rest, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
   end
 
   # : () -> void
@@ -277,9 +287,10 @@ module HoldfastCheck
   # : (given_block given, Array[Act] acts, Array[Integer] positions, Array[Expect] expects, Array[call_spec] call_specs, pause: String?, errors: bool, ?trace: bool, ?shared: Binding?) -> Hash[String, untyped]
   def holdfast_once: (given_block given, Array[Act] acts, Array[Integer] positions, Array[Expect] expects, Array[call_spec] call_specs, pause: String?, errors: bool, ?trace: bool, ?shared: Binding?) -> Hash[String, untyped]
 
-  # Ruby expectations that name `calls(X, :verb)` count those calls too.
-  # : (Array[Expect] expects) -> Array[call_spec]
-  def self.counted: (Array[Expect] expects) -> Array[call_spec]
+  # A `do` or an expectation in Ruby that names `calls(X, :verb)` counts
+  # those calls too.
+  # : (Array[String] texts) -> Array[call_spec]
+  def self.counted: (Array[String] texts) -> Array[call_spec]
 
   # A compound expectation that fails names each operand that failed and
   # what it saw, instead of the whole line.
@@ -316,8 +327,8 @@ module HoldfastCheck
   # means the action never ran as written. In a race, or when `expect`
   # names `error` or `raises`, every error is how the action ended, except
   # a name the tree does not have: that tree cannot run the suspicion.
-  # : (Hash[Symbol, untyped] records, Act act, errors: bool) -> outcome
-  def holdfast_step: (Hash[Symbol, untyped] records, Act act, errors: bool) -> outcome
+  # : (Hash[Symbol, untyped] records, Act act, Calls calls, errors: bool) -> outcome
+  def holdfast_step: (Hash[Symbol, untyped] records, Act act, Calls calls, errors: bool) -> outcome
 
   # A `do` of several lines is one item of the Markdown list it is shown in.
   # : (String text) -> String
@@ -331,8 +342,8 @@ module HoldfastCheck
   # The first action runs on its own thread until it reaches the pause point;
   # the second runs to its end (or until it waits on a lock the first holds);
   # then the first goes on.
-  # : (World world, Array[Act] acts, String point) -> Array[outcome]
-  def holdfast_interleave: (World world, Array[Act] acts, String point) -> Array[outcome]
+  # : (World world, Array[Act] acts, String point, Calls calls) -> Array[outcome]
+  def holdfast_interleave: (World world, Array[Act] acts, String point, Calls calls) -> Array[outcome]
 
   # Whether the second action is still running after a second, or (on
   # PostgreSQL) sooner, as soon as its connection waits on a lock the held
