@@ -9,6 +9,7 @@
 - `holdfast check` refuses a suspicion whose `given` is not a mapping (`given: member`) by name, in place of failing with `TypeError: can't convert String into Hash`.
 - The hunt no longer fails to draft its areas when a controller calls `permit` with no arguments (`params.require(:appointment).permit`).
 - The hunt no longer fails to draft its areas when a controller finds a record by a key held in a local (`find_by(column => params[:token])`): that key names no column, so the draft sends the record's id.
+- The hunt no longer fails to draft its areas when a controller or an endpoint splats a hash into `find_by` or `params.expect` (`find_by(**search)`); the splat names no column.
 
 ## [0.2.0] - 2026-11-14
 

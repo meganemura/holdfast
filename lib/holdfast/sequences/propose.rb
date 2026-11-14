@@ -161,9 +161,10 @@ module Propose
       # `params.dig(:membership, :starts_on)` read a nested form too.
       if node.is_a?(Prism::CallNode) && node.receiver.is_a?(Prism::CallNode) && node.receiver.name == :params && node.name == :expect
         Array(node.arguments&.arguments).grep(Prism::KeywordHashNode).flat_map(&:elements).each do |pair|
-          next unless pair.key.is_a?(Prism::SymbolNode) && pair.value.is_a?(Prism::ArrayNode)
+          next unless pair.is_a?(Prism::AssocNode) && pair.key.is_a?(Prism::SymbolNode) && pair.value.is_a?(Prism::ArrayNode)
 
-          nest.(pair.key.unescaped.to_sym, pair.value.elements.grep(Prism::SymbolNode).map { it.unescaped.to_sym })
+          symbols = pair.value.elements.grep(Prism::SymbolNode) #: Array[Prism::SymbolNode]
+          nest.(pair.key.unescaped.to_sym, symbols.map { it.unescaped.to_sym })
         end
       elsif node.is_a?(Prism::CallNode) && node.receiver.is_a?(Prism::CallNode) && node.receiver.name == :params && node.name == :dig &&
             (keys = Array(node.arguments&.arguments)).size == 2 && keys.all?(Prism::SymbolNode)
@@ -301,6 +302,9 @@ module Propose
 
         hashes = c.arguments&.arguments&.grep(Prism::KeywordHashNode) #: Array[untyped]?
         hashes&.flat_map(&:elements)&.each do |pair|
+          # A splat (`find_by(**filters)`) names no column.
+          next unless pair.is_a?(Prism::AssocNode)
+
           v = pair.value
           next unless pair.key.is_a?(Prism::SymbolNode) && v.is_a?(Prism::CallNode) && v.name == :[] &&
                       v.receiver.is_a?(Prism::CallNode) && v.receiver.name == :params && (first = v.arguments&.arguments&.first).is_a?(Prism::SymbolNode)
@@ -330,7 +334,7 @@ module Propose
 
         hashes = c.arguments&.arguments&.grep(Prism::KeywordHashNode) #: Array[untyped]?
         hashes&.flat_map(&:elements)&.each do |pair|
-          next unless pair.key.is_a?(Prism::SymbolNode) && pair.value.slice.include?("params")
+          next unless pair.is_a?(Prism::AssocNode) && pair.key.is_a?(Prism::SymbolNode) && pair.value.slice.include?("params")
 
           key = pair.value.slice.scan(/\[:(\w+)\]/).flatten.last or next
           model = root.name.to_s.safe_constantize

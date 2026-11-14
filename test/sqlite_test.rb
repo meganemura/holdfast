@@ -91,7 +91,7 @@ class SqliteTest < Minitest::Test
 
   # Drafting reads every controller of the app, so one form it could not
   # read failed the whole hunt.
-  def test_drafting_reads_a_controller_that_permits_nothing_and_finds_by_a_key_held_in_a_local
+  def test_drafting_reads_a_controller_that_permits_nothing_and_finds_by_a_local_key_or_a_splat
     Dir.mktmpdir("holdfast-sqlite") do |dir|
       app = sqlite_clinic(dir)
       File.write(File.join(app, "app", "controllers", "reschedules_controller.rb"), <<~RUBY)
@@ -100,6 +100,10 @@ class SqliteTest < Minitest::Test
             Appointment.find(params[:id]).update!(params.require(:appointment).permit)
             column = :patient_token
             Appointment.find_by(column => params[:token])&.touch
+            search = { status: "booked" }
+            Appointment.find_by(**search)&.touch
+            params.expect(**search)
+            Rails.logger.info(params[:note])
             head :ok
           end
         end
