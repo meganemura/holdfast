@@ -8,9 +8,9 @@ module Holdfast
 
     RECENT: Integer
 
-    NO_ARGS: Array[untyped]
+    NO_ARGS: Array[Holdfast::json_value]
 
-    NO_KWARGS: Hash[String, untyped]
+    NO_KWARGS: Hash[String, Holdfast::json_value]
 
     # @rbs module-self ActiveRecord::Base
     module Track : ActiveRecord::Base
@@ -21,33 +21,37 @@ module Holdfast
       def _update_record: (*untyped) -> untyped
     end
 
-    # : (untyped context, Hash[String, untyped] input, String target) -> Hash[String, untyped]?
-    def self?.observe: (untyped context, Hash[String, untyped] input, String target) -> Hash[String, untyped]?
+    # +context+ is the example the pin test runs in; +input+ is one of the
+    # inputs a pin holds, as JSON.
+    # : (untyped context, Hash[String, Holdfast::json_value] input, String target) -> Hash[String, Holdfast::json_value]?
+    def self?.observe: (untyped context, Hash[String, Holdfast::json_value] input, String target) -> Hash[String, Holdfast::json_value]?
 
     # Paths whose values differ, as "path: base X, head Y" lines.
-    # : (untyped expected, untyped actual, ?String path) -> Array[String]
-    def self?.differences: (untyped expected, untyped actual, ?String path) -> Array[String]
+    # : (Holdfast::json_value expected, Holdfast::json_value actual, ?String path) -> Array[String]
+    def self?.differences: (Holdfast::json_value expected, Holdfast::json_value actual, ?String path) -> Array[String]
 
-    # : (untyped v) -> String
-    def self?.short: (untyped v) -> String
+    # : (Holdfast::json_value v) -> String
+    def self?.short: (Holdfast::json_value v) -> String
 
     # : [T] () { () -> T } -> T?
     def self?.within_savepoint: [T] () { () -> T } -> T?
 
-    # : (untyped context, untyped code) -> untyped
-    def self?.run_ruby: (untyped context, untyped code) -> untyped
+    # The value Ruby in an input evaluates to is the app's.
+    # : (untyped context, Holdfast::json_value code) -> untyped
+    def self?.run_ruby: (untyped context, Holdfast::json_value code) -> untyped
 
-    # : (untyped context, untyped v) -> untyped
-    def self?.value: (untyped context, untyped v) -> untyped
+    # : (untyped context, Holdfast::json_value v) -> untyped
+    def self?.value: (untyped context, Holdfast::json_value v) -> untyped
 
-    # : (Array[[Symbol, untyped]] writes) -> Array[Hash[String, untyped]]
-    def self?.written: (Array[[ Symbol, untyped ]] writes) -> Array[Hash[String, untyped]]
+    # : (Array[[Symbol, ActiveRecord::Base]] writes) -> Array[Hash[String, Holdfast::json_value]]
+    def self?.written: (Array[[ Symbol, ActiveRecord::Base ]] writes) -> Array[Hash[String, Holdfast::json_value]]
 
-    # : (untyped record) -> Hash[String, untyped]
-    def self?.attributes: (untyped record) -> Hash[String, untyped]
+    # : (ActiveRecord::Base record) -> Hash[String, Holdfast::json_value]
+    def self?.attributes: (ActiveRecord::Base record) -> Hash[String, Holdfast::json_value]
 
-    # : (untyped v, ?Integer depth) -> untyped
-    def self?.project: (untyped v, ?Integer depth) -> untyped
+    # Any value the app returns, as JSON.
+    # : (untyped v, ?Integer depth) -> Holdfast::json_value
+    def self?.project: (untyped v, ?Integer depth) -> Holdfast::json_value
 
     # A time near now comes from the clock, not the input, so it is pinned
     # as recent only.

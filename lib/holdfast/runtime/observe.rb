@@ -15,8 +15,8 @@ module Holdfast
     # input, so they never decide a pin.
     VOLATILE = /\A(id|created_at|updated_at)\z|_id\z/ #: Regexp
     RECENT = 86_400 #: Integer
-    NO_ARGS = Array.new.freeze #: Array[untyped]
-    NO_KWARGS = Hash.new.freeze #: Hash[String, untyped]
+    NO_ARGS = Array.new.freeze #: Array[Holdfast::json_value]
+    NO_KWARGS = Hash.new.freeze #: Hash[String, Holdfast::json_value]
 
     # @rbs module-self ActiveRecord::Base
     module Track
@@ -34,7 +34,9 @@ module Holdfast
 
     module_function
 
-    #: (untyped context, Hash[String, untyped] input, String target) -> Hash[String, untyped]?
+    # +context+ is the example the pin test runs in; +input+ is one of the
+    # inputs a pin holds, as JSON.
+    #: (untyped context, Hash[String, Holdfast::json_value] input, String target) -> Hash[String, Holdfast::json_value]?
     def observe(context, input, target)
       parts = target.match(/\A(.+?)([#.])(\w+[?!=]?)\z/) #: MatchData
       const_name, kind, name = parts.captures #: [String, String, String]
@@ -52,7 +54,7 @@ module Holdfast
           { "returns" => project(receiver.__send__(name, *args, **kwargs)) }
         rescue StandardError => e
           { "raises" => e.class.name, "message" => e.message.gsub(/\d{4,}/, "N").lines.first.to_s.strip }
-        end
+        end #: Hash[String, Holdfast::json_value]
         writes = Thread.current[:holdfast_writes]
         outcome["writes"] = written(writes) unless writes.empty?
         outcome
@@ -62,7 +64,7 @@ module Holdfast
     end
 
     # Paths whose values differ, as "path: base X, head Y" lines.
-    #: (untyped expected, untyped actual, ?String path) -> Array[String]
+    #: (Holdfast::json_value expected, Holdfast::json_value actual, ?String path) -> Array[String]
     def differences(expected, actual, path = "")
       return [] if expected == actual
 
@@ -75,7 +77,7 @@ module Holdfast
       end
     end
 
-    #: (untyped v) -> String
+    #: (Holdfast::json_value v) -> String
     def short(v) = (v.nil? ? "(none)" : v.is_a?(String) ? v : JSON.generate(v)).then { _1.size > 90 ? "#{_1[0, 87]}..." : _1 }
 
     #: [T] () { () -> T } -> T?
@@ -90,10 +92,11 @@ module Holdfast
       result
     end
 
-    #: (untyped context, untyped code) -> untyped
+    # The value Ruby in an input evaluates to is the app's.
+    #: (untyped context, Holdfast::json_value code) -> untyped
     def run_ruby(context, code) = context.instance_eval(code.is_a?(Hash) ? code.fetch("ruby") : code.to_s)
 
-    #: (untyped context, untyped v) -> untyped
+    #: (untyped context, Holdfast::json_value v) -> untyped
     def value(context, v)
       case v
       when Hash then v.keys == ["ruby"] ? run_ruby(context, v) : v.to_h { [_1, value(context, _2)] }
@@ -102,7 +105,7 @@ module Holdfast
       end
     end
 
-    #: (Array[[Symbol, untyped]] writes) -> Array[Hash[String, untyped]]
+    #: (Array[[Symbol, ActiveRecord::Base]] writes) -> Array[Hash[String, Holdfast::json_value]]
     def written(writes)
       seen = {} #: Hash[[Symbol, String?, Integer], Hash[String, untyped]]
       writes.each do |how, record|
@@ -120,10 +123,11 @@ module Holdfast
       seen.values.sort_by { JSON.generate(_1) }
     end
 
-    #: (untyped record) -> Hash[String, untyped]
+    #: (ActiveRecord::Base record) -> Hash[String, Holdfast::json_value]
     def attributes(record) = record.attributes.reject { |k, _| k.match?(VOLATILE) }.sort.to_h.transform_values { project(_1) }
 
-    #: (untyped v, ?Integer depth) -> untyped
+    # Any value the app returns, as JSON.
+    #: (untyped v, ?Integer depth) -> Holdfast::json_value
     def project(v, depth = 0)
       return v.class.name if depth > 3
 
