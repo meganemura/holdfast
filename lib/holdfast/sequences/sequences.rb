@@ -1451,7 +1451,7 @@ end
           next
         end
         # The first action, in random order, whose pools hold a record.
-        # @type var choice: choice?
+        # @type var choice: Runner::choice?
         action = nil #: Action?
         choice = nil
         actions.shuffle(random:).each do |candidate|
@@ -1464,7 +1464,7 @@ end
         next unless action
 
         # Set with the action it was drawn for.
-        picked = choice #: choice
+        picked = choice #: Runner::choice
         begin
           stats[action.name][:runs] += 1
           with_zone("UTC") { runner.step(action.name, picked) }
