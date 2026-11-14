@@ -40,7 +40,7 @@ DB_HOST=localhost DB_PORT=5432 ruby -Ilib test/run.rb
 gem build holdfast.gemspec
 ```
 
-`test/run.rb` runs every test file. `test/check_parse_test.rb` needs no database. `test/skill_examples_test.rb` and `test/hunt_test.rb` copy the clinic fixture to a temporary directory, commit it, and run `bin/holdfast` there with the fixture's own bundle. They need a PostgreSQL server at `DB_HOST` and `DB_PORT` (user `DB_USER`, default `postgres`, with no password), the fixture's gems, and hegeltest installed for the same Ruby. Without `DB_HOST` they skip; `HOLDFAST_PG=required` turns the skip into a failure, as CI does. They take about 40 seconds.
+`test/run.rb` runs every test file. `test/check_parse_test.rb` needs no database. `test/skill_examples_test.rb` and `test/hunt_test.rb` copy the clinic fixture to a temporary directory, commit it, and run `bin/holdfast` there with the fixture's own bundle. They need a PostgreSQL server at `DB_HOST` and `DB_PORT` (user `DB_USER`, default `postgres`, with no password), the fixture's gems, and hegeltest installed for the same Ruby. Without `DB_HOST` they skip; `HOLDFAST_PG=required` turns the skip into a failure, as CI does. `test/sqlite_test.rb` moves the fixture to SQLite and runs the same examples and a hunt; it needs the sqlite3 gem installed for the same Ruby, skips without it, and fails instead with `HOLDFAST_SQLITE=required`. They take about 40 seconds.
 
 CI (`.github/workflows/ci.yml`) runs the tests on Ruby 3.4 and 4.0 with a PostgreSQL 16 service, and builds the gem.
 

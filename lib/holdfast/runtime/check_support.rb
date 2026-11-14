@@ -653,10 +653,16 @@ module HoldfastCheck
     end
   end
 
+  # SQLite has no TRUNCATE; DELETE with the foreign keys off empties the
+  # tables in any order, and sqlite_sequence holds the ids to restart.
   def holdfast_truncate
     conn = ActiveRecord::Base.connection
     tables = conn.tables - %w[schema_migrations ar_internal_metadata]
-    conn.execute("TRUNCATE #{tables.map { conn.quote_table_name(_1) }.join(", ")} RESTART IDENTITY CASCADE") if tables.any?
+    return if tables.empty?
+    return conn.execute("TRUNCATE #{tables.map { conn.quote_table_name(_1) }.join(", ")} RESTART IDENTITY CASCADE") if conn.adapter_name.match?(/postg/i)
+
+    conn.disable_referential_integrity { tables.each { conn.execute("DELETE FROM #{conn.quote_table_name(_1)}") } }
+    conn.execute("DELETE FROM sqlite_sequence") if conn.adapter_name.match?(/sqlite/i) && conn.select_value("SELECT 1 FROM sqlite_master WHERE name = 'sqlite_sequence'")
   end
 
   def holdfast_write(report)

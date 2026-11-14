@@ -23,7 +23,7 @@ module Holdfast
     def self.learn(root)
       facts = read_facts(root)
       steps = []
-      if facts["rails"] && facts["database"]["server"]
+      if facts["rails"] && facts["database"]["url"]
         SIDES.each do |side, number|
           steps << run_step(root, "create the #{side} database (#{database_name(facts, number) || "TEST_ENV_NUMBER=#{number}"})", facts["side_setup"],
                             side_env(facts, number))
@@ -46,15 +46,18 @@ module Holdfast
       test_section = db_yml[/^test:.*\z/m].to_s
       adapter = test_section[/adapter:\s*(\w+)/, 1] || db_yml[/adapter:\s*(\w+)/, 1]
       server = %w[postgresql mysql2 trilogy].include?(adapter)
+      url = if server then database_url(root, adapter)
+            elsif adapter == "sqlite3" then sqlite_url(root)
+            end
       {
         "framework" => framework,
         "bundle" => File.file?(File.join(root, "Gemfile")) ? "bundle exec " : "",
         "rails" => File.file?(File.join(root, "config/environment.rb")),
         "helper" => framework == "rspec" ? (File.file?(File.join(root, "spec/rails_helper.rb")) ? "rails_helper" : "spec_helper") : "test_helper",
         "database" => { "adapter" => adapter, "server" => server, "numbered" => test_section.include?("TEST_ENV_NUMBER"),
-                        "url" => server ? database_url(root, adapter) : nil }.compact,
+                        "url" => url }.compact,
         "env" => db_yml.scan(/ENV(?:\.fetch\(|\[)\s*["'](\w+)["']/).flatten.uniq - %w[TEST_ENV_NUMBER RAILS_ENV],
-        "side_setup" => server ? "bin/rails db:create db:schema:load" : nil,
+        "side_setup" => url ? "bin/rails db:create db:schema:load" : nil,
         "base_branch" => base_branch(root),
         "coverage" => COVERAGE.find { File.file?(File.join(root, _1)) }
       }
@@ -75,6 +78,12 @@ module Holdfast
     rescue StandardError
       nil
     end
+
+    # A SQLite database.yml names one file, and TEST_ENV_NUMBER changes it
+    # only where the file name reads it: base, head and each hunt worker
+    # wrote the app's own storage/test.sqlite3, and emptied it after a race.
+    # Each gets a file of its own under .holdfast/db/ instead.
+    def self.sqlite_url(root) = "sqlite3:#{File.join(File.expand_path(Holdfast.dir(root)), "db", "test")}"
 
     def self.side_env(facts, number)
       url = facts.dig("database", "url")

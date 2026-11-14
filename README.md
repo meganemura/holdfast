@@ -6,7 +6,7 @@ It is made for a coding agent that reads code and has to say what it found. The 
 
 ## Quick start in your Rails app
 
-You need Ruby 3.4 or newer, git, and an app whose specs run with RSpec and FactoryBot against a test database. Run each step from the app's root.
+You need Ruby 3.4 or newer, git, and an app whose specs run with RSpec and FactoryBot against a test database on PostgreSQL or SQLite. Run each step from the app's root.
 
 ### 1. Add the gem
 
@@ -164,7 +164,9 @@ holdfast show
 
 holdfast writes under `.holdfast/` and `spec/holdfast/` in the app. Add `.holdfast/` to the app's `.gitignore`. Commit the specs you keep.
 
-Each app gets its own test database names through `DATABASE_URL`, made from its directory, so base and head, and two apps on one server, do not share one. The setup runs `bin/rails db:create db:schema:load`.
+Each app gets its own test database names through `DATABASE_URL`, made from its directory, so base and head, and two apps on one server, do not share one. On SQLite, each side gets a file of its own under `.holdfast/db/`, and the app's own test database file is never written. The setup runs `bin/rails db:create db:schema:load`.
+
+Races and the hunt run on PostgreSQL and on SQLite. SQLite lets one connection write at a time: when a race holds an action that has already written in its open transaction, the other action waits for it, and the row says `the second waited on a lock`. MySQL is not tested.
 
 ## Limits
 

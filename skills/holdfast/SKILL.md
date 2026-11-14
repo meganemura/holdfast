@@ -7,7 +7,7 @@ description: Run what you suspect instead of leaving it "read only". In a Ruby o
 
 ## Setup
 
-Add `gem "holdfast", require: false` to the app's `:test` group and run `bundle install`; run every command below as `bundle exec holdfast ...` from the app root. jitcatch and branchout, which `holdfast run` uses on a change, come with it. The app needs RSpec, FactoryBot and a test database.
+Add `gem "holdfast", require: false` to the app's `:test` group and run `bundle install`; run every command below as `bundle exec holdfast ...` from the app root. jitcatch and branchout, which `holdfast run` uses on a change, come with it. The app needs RSpec, FactoryBot and a test database on PostgreSQL or SQLite; races and the hunt run on both (MySQL is untested). SQLite lets one connection write at a time, so a race that holds an action after it wrote in its open transaction makes the other wait, and the row says `the second waited on a lock`.
 
 ## The loop: read, suspect, check, keep
 
@@ -49,7 +49,7 @@ In a change (the tree differs from the base branch, or `--base REF`), each suspi
 | `refuted` | `expect` held; each observed value is listed | Nothing to fix for this suspicion. |
 | `could_not_run` | Nothing was checked: the row names the `given` key and its error, the `do` line that raised, a request with no route or one turned away (401, 403), or that no pause point was reached (with the app methods the action called, to name as `pause`) | Fix the suspicion, run again. |
 
-An error that app code raised is how the action ended, and `expect` is checked against it. An error from your own line (a misspelt name, a wrong argument list) is could_not_run. Each branch keeps its own specs and rows: `.holdfast/check/<branch>/check.md` is the summary, `check.jsonl` beside it has every row.
+An error that app code raised is how the action ended, and `expect` is checked against it. An error from your own line (a misspelt name, a wrong argument list) is could_not_run. A could_not_run row that starts `holdfast:` failed in holdfast's own support code, and its `next` names the database adapter: neither the suspicion nor the app is the cause. Each branch keeps its own specs and rows: `.holdfast/check/<branch>/check.md` is the summary, `check.jsonl` beside it has every row.
 
 ## Check a change: holdfast run
 
@@ -93,4 +93,4 @@ A `bug_suspect` row names the broken rule, and its log holds the shortest sequen
 
 ## When setup fails
 
-The first run learns `.holdfast/record.json` (test framework, databases: each app gets its own names through `DATABASE_URL`). A failed step is kept with its command and output, and every row says so. Fix the environment, then `holdfast run --learn`.
+The first run learns `.holdfast/record.json` (test framework, databases: each side gets its own through `DATABASE_URL`, a name of this app's own on a server and a file under `.holdfast/db/` on SQLite; the app's own test database is never written). A failed step is kept with its command and output, and every row says so. Fix the environment, then `holdfast run --learn`.

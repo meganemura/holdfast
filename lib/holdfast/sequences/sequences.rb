@@ -1,5 +1,5 @@
 # Runs generated sequences of an app's entry points
-# against real PostgreSQL: random orders (shrunk by Hegel), two actions
+# against the app's real test database (PostgreSQL or SQLite): random orders (shrunk by Hegel), two actions
 # interleaved at a named pause point, and the same sequence replayed under
 # other process time zones. The hunt stage loads it into the app's test
 # process through SEQUENCES_LIB, so it needs hegeltest in that bundle.
@@ -522,9 +522,11 @@ end
     # took a quarter of the run.
     def stored_dates
       conn = ActiveRecord::Base.connection
+      # SQLite reads CAST(... AS date) as a number (the year); date() is its day.
+      day = conn.adapter_name.match?(/sqlite/i) ? ->(col) { "date(#{col})" } : ->(col) { "CAST(#{col} AS date)" }
       @dates_sql ||= (conn.tables - %w[schema_migrations ar_internal_metadata]).flat_map do |table|
         conn.columns(table).select { %i[date datetime].include?(it.type) && !@definition.ignore_columns.include?(it.name) }.map do |column|
-          "SELECT DISTINCT CAST(#{conn.quote_column_name(column.name)} AS date) AS d FROM #{conn.quote_table_name(table)} WHERE #{conn.quote_column_name(column.name)} IS NOT NULL"
+          "SELECT DISTINCT #{day.(conn.quote_column_name(column.name))} AS d FROM #{conn.quote_table_name(table)} WHERE #{conn.quote_column_name(column.name)} IS NOT NULL"
         end
       end.join(" UNION ")
       return [] if @dates_sql.empty?
@@ -1221,7 +1223,7 @@ end
   # The fakes are plain objects that remember charges and failures armed; a
   # trial's rollback must undo those too.
   def self.save_outside_state
-    seqs = ActiveRecord::Base.connection.select_rows(sequence_state_sql)
+    seqs = sequence_state_sql.empty? ? [] : ActiveRecord::Base.connection.select_rows(sequence_state_sql)
     fakes = outside_classes_declared.flat_map { |klass| ObjectSpace.each_object(klass).to_a }.map do |fake|
       [fake, fake.instance_variables.to_h { [it, Marshal.load(Marshal.dump(fake.instance_variable_get(it)))] }]
     rescue TypeError
@@ -1236,12 +1238,17 @@ end
     fakes.each { |fake, ivars| ivars.each { fake.instance_variable_set(_1, _2) } }
   end
 
+  def self.postgres? = ActiveRecord::Base.connection.adapter_name.match?(/postg/i)
+
+  # Only PostgreSQL keeps id counters outside the transaction a trial rolls
+  # back; SQLite's sqlite_sequence is a table, rolled back with the rows.
   def self.sequence_state_sql
-    @sequence_state_sql ||= begin
-      conn = ActiveRecord::Base.connection
-      names = conn.select_values("SELECT sequencename FROM pg_sequences WHERE schemaname = current_schema()")
-      names.map { "SELECT #{conn.quote(it)}, last_value, is_called FROM #{conn.quote_table_name(it)}" }.join(" UNION ALL ")
-    end
+    @sequence_state_sql ||= if postgres?
+                              conn = ActiveRecord::Base.connection
+                              names = conn.select_values("SELECT sequencename FROM pg_sequences WHERE schemaname = current_schema()")
+                              names.map { "SELECT #{conn.quote(it)}, last_value, is_called FROM #{conn.quote_table_name(it)}" }.join(" UNION ALL ")
+                            else ""
+                            end
   end
 
   def self.outside_classes_declared = (@outside_classes_declared ||= Set.new)
@@ -1265,9 +1272,13 @@ end
   # Empties every table and restarts its ids, so two runs of the same steps
   # get the same ids. DELETE in foreign-key order (children first) took 1 ms
   # on this app's few rows where TRUNCATE ... RESTART IDENTITY took 72 ms.
-  # A schema whose keys form a cycle falls back to TRUNCATE.
+  # A schema whose keys form a cycle falls back to TRUNCATE. SQLite has no
+  # TRUNCATE and no sequences: DELETE with the foreign keys off, then
+  # sqlite_sequence, which holds the ids to restart.
   def self.empty_tables
     conn = ActiveRecord::Base.connection
+    return empty_tables_without_truncate(conn) unless postgres?
+
     @empty_sql ||= begin
       tables = conn.tables - %w[schema_migrations ar_internal_metadata]
       parents = tables.to_h { |t| [t, conn.foreign_keys(t).map(&:to_table) - [t]] }
@@ -1288,6 +1299,15 @@ end
       end
     end
     conn.execute(@empty_sql)
+  end
+
+  def self.empty_tables_without_truncate(conn)
+    @empty_statements ||= begin
+      tables = conn.tables - %w[schema_migrations ar_internal_metadata]
+      sqlite = conn.adapter_name.match?(/sqlite/i) && conn.select_value("SELECT 1 FROM sqlite_master WHERE name = 'sqlite_sequence'")
+      tables.map { "DELETE FROM #{conn.quote_table_name(it)}" } + (sqlite ? ["DELETE FROM sqlite_sequence"] : [])
+    end
+    conn.disable_referential_integrity { @empty_statements.each { conn.execute(it) } }
   end
 
 

@@ -107,7 +107,15 @@ module Holdfast
         out, status = Open3.capture2e(probe_env, "bundle", "exec", "ruby", File.join(SEQUENCES, "propose.rb"), "--all", chdir: change.root)
         return nil if status.success?
 
-        row("(sequences)", "unchecked", "drafting the areas failed: #{out.lines.grep(/Error|error/).first.to_s.strip}", [],
+        error = out.lines.grep(/Error|error/).first.to_s.strip
+        # The first frame outside the gems says whose code raised: holdfast's
+        # own drafting is nothing the app or its factories can fix.
+        frame = out.lines.map(&:strip).find { _1.match?(%r{\A(?:from )?/\S+\.rb:\d+}) && (_1.include?(SEQUENCES) || !_1.include?("/gems/")) }.to_s
+        if frame.include?(SEQUENCES)
+          return row("(sequences)", "unchecked", "holdfast failed while drafting the areas (#{record.data.dig("database", "adapter")} adapter): #{error}", ["at: #{frame.delete_prefix("from ")}"],
+                     "report it to holdfast with this row; the app and its factories are not the cause")
+        end
+        row("(sequences)", "unchecked", "drafting the areas failed: #{error}", [],
             "fix the error it names in the app or its factories, then holdfast run")
       end
 

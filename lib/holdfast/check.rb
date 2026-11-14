@@ -403,7 +403,10 @@ module Holdfast
       msg = run["log"].to_s.lines.grep(/Error|error/).first.to_s.strip if msg.empty?
       frame = Array(ex&.dig("exception", "backtrace")).find { _1.include?("spec/holdfast/") }
       msg = "rspec printed nothing for it; read #{run["out"]}/rspec.log" if msg.empty?
-      { "result" => "could_not_run", "phase" => "spec", "error" => "the spec did not finish: #{ex&.dig("exception", "class")} #{msg[0, 400]}#{" at #{frame[%r{spec/holdfast/\S+}]}" if frame}".squeeze(" ") }
+      # Raised first in holdfast's own support file, not in the suspicion's
+      # lines or the app: nothing in the suspicion can fix it.
+      own = Array(ex&.dig("exception", "backtrace")).find { !_1.include?("/gems/") }.to_s.include?("/holdfast_check.rb:")
+      { "result" => "could_not_run", "phase" => own ? "holdfast" : "spec", "error" => "the spec did not finish: #{ex&.dig("exception", "class")} #{msg[0, 400]}#{" at #{frame[%r{spec/holdfast/\S+}]}" if frame}".squeeze(" ") }
     end
 
     def self.describe(r)
@@ -464,6 +467,9 @@ module Holdfast
                when "given" then "fix the named part of `given` (an attribute, a factory: or a traits: key), then holdfast check again"
                when "do" then "the action raised before `expect` ran; if that error is the bug, write `expect: no error`, else fix `do`"
                when "pause" then "name a method the first action passes through as `pause: Class#method`"
+               when "holdfast"
+                 "holdfast's own support code failed on the #{record.data.dig("database", "adapter") || "unknown"} adapter, not the suspicion or the app; " \
+                 "report it to holdfast with this row (races and the hunt run on PostgreSQL and SQLite)"
                else "read the error, fix the suspicion, then holdfast check again"
                end
         Verdict.of(target: s.says, stage: "check", kind: "could_not_run", reason: "#{head["phase"] || "spec"}: #{head["error"]}", evidence:, scope: spec_path, repro:, next_step: step)
