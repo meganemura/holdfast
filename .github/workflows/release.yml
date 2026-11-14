@@ -10,6 +10,11 @@ on:
     paths:
       - lib/holdfast/version.rb
   workflow_dispatch:
+    inputs:
+      rubygems-owner:
+        description: RubyGems.org account id that will own the gem, only for its first publication
+        type: string
+        required: false
 
 permissions: {}
 
@@ -94,14 +99,16 @@ jobs:
           test -f "holdfast-${TAG#v}.gem"
       # RubyGems creates a new gem from a pending trusted publisher only when the
       # exchange names the account that will own it, and no release of
-      # rubygems/configure-rubygems-credentials sends that yet. 70209 is the
-      # RubyGems.org id of meganemura; an id, unlike a handle, cannot be recycled.
+      # rubygems/configure-rubygems-credentials sends that yet. The first
+      # publication is a workflow_dispatch run given that account id (shown on
+      # the account's Pending Trusted Publishers page); every later release is a
+      # push and sends no owner.
       - name: Exchange the OIDC token for a RubyGems API key
         env:
-          RUBYGEMS_OWNER: "70209"
+          RUBYGEMS_OWNER: ${{ inputs.rubygems-owner }}
         run: |
           jwt=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=rubygems.org" | jq -r .value)
-          response=$(jq -n --arg jwt "$jwt" --arg owner "$RUBYGEMS_OWNER" '{jwt: $jwt, owner: $owner}' |
+          response=$(jq -n --arg jwt "$jwt" --arg owner "$RUBYGEMS_OWNER" '{jwt: $jwt} + (if $owner == "" then {} else {owner: $owner} end)' |
             curl -sS -X POST -H "Content-Type: application/json" -H "Accept: application/json" --data @- https://rubygems.org/api/v1/oidc/trusted_publisher/exchange_token)
           key=$(echo "$response" | jq -r ".rubygems_api_key // empty")
           if [ -z "$key" ]; then
