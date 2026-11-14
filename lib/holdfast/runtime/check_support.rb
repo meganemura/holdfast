@@ -24,7 +24,7 @@ module HoldfastCheck
   # first time the held action passes it; `Class#method` is the fifth kind.
   POINTS = {
     "batch_load" => "its first query that returns rows",
-    "outside_call" => "its first call to an outside-service client",
+    "outside_call" => "its first call to an outside-service client, or to a module method the suspicion stubs",
     "row_lock" => "its first with_lock or lock!, before the lock is taken",
     "first_write" => "its first INSERT, UPDATE or DELETE"
   }.freeze
@@ -124,6 +124,29 @@ module HoldfastCheck
     end
   end
   OutsideGate = Module.new
+
+  # A service the suspicion stubs on a module (`allow(LockerApi).to
+  # receive(:register)`) is an outside call too, and `pause:
+  # LockerApi.register` names it. RSpec's stub sits in front of any hook
+  # prepended to the module, so the hold is on the stub's own invocation.
+  module StubGate
+    private
+
+    def invoke_incrementing_actual_calls_by(*args, &block)
+      if orig_object.is_a?(Module) && orig_object.name
+        gate = HoldfastCheck.gate
+        HoldfastCheck.hold(gate, "outside_call", "#{orig_object.name}.#{message}")
+        HoldfastCheck.hold(gate, "#{orig_object.name}.#{message}", "#{orig_object.name}.#{message}")
+      end
+      super
+    end
+  end
+  # rspec-mocks loads when the first example runs, after this file.
+  def self.watch_stubs
+    return unless defined?(RSpec::Mocks::MessageExpectation)
+
+    RSpec::Mocks::MessageExpectation.prepend(StubGate) unless RSpec::Mocks::MessageExpectation <= StubGate
+  end
 
   def self.method_gate(point)
     @method_gates ||= {}
@@ -338,6 +361,7 @@ module HoldfastCheck
   def holdfast_race(given, acts, expects, calls, pause, shared)
     Rails.application.eager_load!
     HoldfastCheck.watch_writes
+    HoldfastCheck.watch_stubs
     named = pause && pause != "batch_load"
     HoldfastCheck.method_gate(pause) if named && !POINTS.key?(pause)
     points = named ? [pause] : ["batch_load", *FALLBACKS]

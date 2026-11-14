@@ -69,6 +69,26 @@ class SqliteTest < Minitest::Test
     end
   end
 
+  # RSpec's stub sits in front of a hook on the module, so a race could not
+  # hold at a module method the suspicion stubs until the stub itself held.
+  def test_a_race_holds_at_a_module_method_the_suspicion_stubs
+    Dir.mktmpdir("holdfast-sqlite") do |dir|
+      app = sqlite_clinic(dir)
+      suspicion = <<~YAML
+        - says: the sweep holds at the gateway while a check-in waits
+          given: {stub: {ruby: "allow(PaymentGateway).to receive(:client).and_return(FakePaymentGateway.new); :stubbed"}, appointment: {status: booked, starts_at: -20m}}
+          race: [NoShowSweepJob.perform_now, "CheckIn.new(appointment).call"]
+          pause: PaymentGateway.client
+          expect: appointment.status == "no_show"
+      YAML
+      File.write(File.join(dir, "stub.yml"), suspicion)
+      out, = holdfast(app, "check", File.join(dir, "stub.yml"), "--here")
+      row = JSON.parse(File.readlines(File.join(app, ".holdfast", "check", "main", "check.jsonl")).first)
+      refute_equal "could_not_run", row["kind"], out
+      assert_includes row["evidence"].join("\n"), "held at PaymentGateway.client", out
+    end
+  end
+
   # A service that calls Net::HTTP itself has no `.client` a spec replaces:
   # its real call is the environment, never a bug_suspect row.
   def test_a_real_network_call_in_the_hunt_is_the_environment_and_the_draft_names_the_service
