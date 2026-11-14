@@ -555,14 +555,17 @@ module HoldfastCheck
   def holdfast_step(records, act, errors:)
     scope = Scope.new(self, records)
     result = scope.instance_exec(&act.block)
-    { result:, scope:, shown: "#{act.text} returned #{holdfast_show(result)}" }
+    { result:, scope:, shown: "#{HoldfastCheck.one_line(act.text)} returned #{holdfast_show(result)}" }
   rescue StandardError => e
     app = HoldfastCheck.app_error?(e)
     absent = HoldfastCheck.absent(e) unless app
     raise CouldNotRun.new("do", "`#{act.text}` raised #{e.class}: #{e.message.lines.first.to_s.strip}", absent:) if absent || !(errors || app)
 
-    { error: e, scope:, shown: "#{act.text.strip.gsub(/\s*\n\s*/, "; ")} raised #{e.class}: #{e.message.lines.first.to_s.strip[0, 300]}" }
+    { error: e, scope:, shown: "#{HoldfastCheck.one_line(act.text)} raised #{e.class}: #{e.message.lines.first.to_s.strip[0, 300]}" }
   end
+
+  # A `do` of several lines is one item of the Markdown list it is shown in.
+  def self.one_line(text) = text.strip.gsub(/\s*\n\s*/, "; ")
 
   CALL_SHAPE = /wrong number of arguments|missing keyword|unknown keyword/
 

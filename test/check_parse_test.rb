@@ -79,4 +79,14 @@ def test_ruby_in_place_of_the_attributes_and_plain_values_build_without_a_factor
     error = assert_raises(Holdfast::Error) { parse("- says: x\n  do: a.call(\n  expect: no error\n") }
     assert_match(/suspicion 1 \(x\): `do` is not Ruby/, error.message)
   end
+
+  # A kept spec from an earlier run is the same file only for the same text.
+  def test_a_suspicion_is_named_by_its_text_not_its_place_in_the_file
+    alone = parse("- says: the sweep charges\n  do: a\n  expect: no error\n").first
+    second = parse("- says: something else\n  do: b\n  expect: no error\n- says: the sweep charges\n  do: a\n  expect: no error\n").last
+    assert_equal alone.id, second.id
+    refute_equal parse("- says: the sweep charges twice\n  do: a\n  expect: no error\n").first.id, alone.id
+    error = assert_raises(Holdfast::Error) { parse("- says: x\n  do: a\n  expect: no error\n- says: x\n  do: b\n  expect: no error\n") }
+    assert_match(/two suspicions say "x"/, error.message)
+  end
 end

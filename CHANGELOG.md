@@ -16,5 +16,8 @@ First release. holdfast runs what an agent suspects about a Rails app, on base a
 - Every hunt shrinks a failure, for a quarter of an area's time limit, between 15 and 60 seconds. Shrinking was off for any `--budget` under 900, the default of 600 included.
 - A request sent again no longer fails the area with an internal `Sequences::Diverged` when an action since destroyed its record.
 - A hunt never drafts over an area file that exists, so a merged area stays merged. The skill shows how to fake a service that calls HTTP itself with `outside_calls`, `failure` and `failures:`, and how to merge areas so a bug across two of them is reachable.
+- A kept spec is named by its suspicion's `says` text and a digest of it, not by its place in the file, so specs from separate runs no longer share an `sN_` number and checking a suspicion again replaces its own spec.
+- A `do` of several lines shows as one line in a row, so it no longer breaks the Markdown list.
+- A dirty working tree shows as `uncommitted changes on <commit>`, a commit `git log` has, in place of the hash of holdfast's private snapshot.
 - An agent skill in `skills/holdfast/`.
 - Ruby 3.4 or newer. Runtime dependencies: hegeltest 0.5.1, jitcatch and branchout (`~> 0.1`).

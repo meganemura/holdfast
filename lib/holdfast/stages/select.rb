@@ -38,7 +38,7 @@ module Holdfast
         unless change.changed?
           missing = change.named.reject { |n| kept.any? { named_match?(n, _1) } }
           verdicts += missing.map do |n|
-            Verdict.of(target: n, stage: "select", kind: "unchecked", reason: "no method or file named #{n} at #{change.short(change.head)}",
+            Verdict.of(target: n, stage: "select", kind: "unchecked", reason: "no method or file named #{n} at #{change.tree_label}",
                        next_step: "name it as Const#method, Const.method, or a path under app/, then run holdfast run --target again")
           end
         end

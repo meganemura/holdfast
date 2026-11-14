@@ -63,9 +63,9 @@ bundle exec holdfast check suspicions.yml
 ```text
 # holdfast
 
-check: 2 suspicion(s); no change: checks run on the current tree only (af23e82); app, lib, config, db and the Gemfile match main (a17770f)
+check: 2 suspicion(s); no change: checks run on the current tree only (uncommitted changes on 62b0f46); app, lib, config, db and the Gemfile match main (62b0f46)
 kept specs: spec/holdfast/main/ (branch main); rows: .holdfast/check/main/check.jsonl
-seconds: record 9.6, run 5.5
+seconds: record 4.2, run 2.4
 
 confirmed=2 could_not_run=0 refuted=0
 
@@ -75,8 +75,8 @@ confirmed=2 could_not_run=0 refuted=0
   - ran: NoShowSweepJob.perform_now returned [Appointment#1(status: "no_show")]
   - no PaymentGateway charge fails ([[{customer: "pat_1", amount_cents: 2500, reference: "no-show-1"}]])
   - spec output: suspicion confirmed: no PaymentGateway charge does not hold (observed [[{customer: "pat_1", amount_cents: 2500, reference: "no-show-1"}]])
-  - repro: `DATABASE_URL=postgres://postgres@127.0.0.1:56111/hf_clinic_9f0097_c2 TEST_ENV_NUMBER=c2 bundle exec rspec spec/holdfast/main/s1_a_passed_tentative_appointment_is_charged_a_no_s_spec.rb`
-  - next: keep spec/holdfast/main/s1_a_passed_tentative_appointment_is_charged_a_no_s_spec.rb; it fails until the code is fixed
+  - repro: `DATABASE_URL=postgres://postgres@127.0.0.1:5440/hf_clinic_c5da1e_c2 TEST_ENV_NUMBER=c2 bundle exec rspec spec/holdfast/main/a_passed_tentative_appointment_is_charged_a_73c143_spec.rb`
+  - next: keep spec/holdfast/main/a_passed_tentative_appointment_is_charged_a_73c143_spec.rb; it fails until the code is fixed
 - `check-in between the sweep's load and its lock becomes a no-show`: first held at batch_load, second runs (held at Appointment load (1 rows)) ends [[Appointment#1(status: "no_show")], Appointment#1(status: "checked_in"); appointment.status == "checked_in" fails ("no_show")], an end no serial order reaches (first then second ends [[Appointment#1(status: "no_show")], raised CheckIn::Refused; appointment.status == "checked_in" fails ("no_show")]; second then first ends [[], Appointment#1(status: "checked_in"); appointment.status == "checked_in" holds ("checked_in")]); serial order "first then second" also fails expect, so this end is the evidence
   - pause points tried: batch_load: Appointment load (1 rows)
   - first held at batch_load, second runs: NoShowSweepJob.perform_now returned [Appointment#1(status: "no_show")]; CheckIn.new(appointment).call returned Appointment#1(status: "checked_in"); held at Appointment load (1 rows); appointment.status == "checked_in" fails ("no_show")
@@ -84,8 +84,8 @@ confirmed=2 could_not_run=0 refuted=0
   - second then first: CheckIn.new(appointment).call returned Appointment#1(status: "checked_in"); NoShowSweepJob.perform_now returned []; appointment.status == "checked_in" holds ("checked_in")
   - second held at batch_load, first runs: CheckIn.new(appointment).call returned Appointment#1(status: "checked_in"); NoShowSweepJob.perform_now returned [Appointment#1(status: "no_show")]; held at Appointment load (1 rows); the second waited on a lock; appointment.status == "checked_in" fails ("no_show")
   - spec output: suspicion confirmed: first held at batch_load, second runs (held at Appointment load (1 rows)) ends [[Appointment#1(status: "no_show")], Appointment#1(status: "checked_in"); appointment.status == "checked_in" fails ("no_show")], an end no serial order reaches (first then second ends [[Appointment#1(status: "no_show")], raised CheckIn::Refused; appointment.status == "checked_in" fails ("no_show")]; second then first ends [[], Appointment#1(status: "checked_in"); appointment.status == "checked_in" holds ("checked_in")]); serial order "first then second" also fails expect, so this end is the evidence
-  - repro: `DATABASE_URL=postgres://postgres@127.0.0.1:56111/hf_clinic_9f0097_c2 TEST_ENV_NUMBER=c2 bundle exec rspec spec/holdfast/main/s2_check_in_between_the_sweep_s_load_and_its_lock_b_spec.rb`
-  - next: keep spec/holdfast/main/s2_check_in_between_the_sweep_s_load_and_its_lock_b_spec.rb; it fails until the code is fixed
+  - repro: `DATABASE_URL=postgres://postgres@127.0.0.1:5440/hf_clinic_c5da1e_c2 TEST_ENV_NUMBER=c2 bundle exec rspec spec/holdfast/main/check_in_between_the_sweep_s_load_and_its_lo_d80794_spec.rb`
+  - next: keep spec/holdfast/main/check_in_between_the_sweep_s_load_and_its_lo_d80794_spec.rb; it fails until the code is fixed
 rows: .holdfast/check/main/check.jsonl; kept specs: spec/holdfast/main/
 ```
 
@@ -99,7 +99,7 @@ confirmed の行はそれぞれ `spec/holdfast/<branch>/` の下のスペック�
 ジョブが確定済みの予約（booked）だけを選ぶように直すと、一つ目のスペックは通ります。
 
 ```sh
-bundle exec rspec spec/holdfast/main/s1_a_passed_tentative_appointment_is_charged_a_no_s_spec.rb
+bundle exec rspec spec/holdfast/main/a_passed_tentative_appointment_is_charged_a_73c143_spec.rb
 ```
 
 ```text
@@ -117,22 +117,22 @@ base のブランチと違うブランチの上では（`--base REF` で別の b
 ```text
 # holdfast
 
-check: 2 suspicion(s); change: each runs on base main (a17770f) and on the working tree (a0a7f53); 1 file(s) differ: app/jobs/no_show_sweep_job.rb
+check: 2 suspicion(s); change: each runs on base main (62b0f46) and on the working tree (uncommitted changes on 7c510b0); 1 file(s) differ: app/jobs/no_show_sweep_job.rb
 kept specs: spec/holdfast/skip-tentative/ (branch skip-tentative); rows: .holdfast/check/skip-tentative/check.jsonl
-seconds: record 0.0, run 5.6
+seconds: record 0.0, run 2.6
 
 confirmed=1 could_not_run=0 refuted=1
 
 ## Confirmed (the kept spec fails)
 
 - `check-in between the sweep's load and its lock becomes a no-show`: first held at batch_load, second runs (held at Appointment load (1 rows)) ends [...]
-  - base a17770f: confirmed: [...]; it was there before the change
+  - base 62b0f46: confirmed: [...]; it was there before the change
   [...]
 
 ## Refuted (what was observed)
 
 - `a passed tentative appointment is charged a no-show fee`: no PaymentGateway charge holds (observed [])
-  - base a17770f: confirmed: no PaymentGateway charge does not hold (observed [[{customer: "pat_1", amount_cents: 2500, reference: "no-show-1"}]]); the change removes it
+  - base 62b0f46: confirmed: no PaymentGateway charge does not hold (observed [[{customer: "pat_1", amount_cents: 2500, reference: "no-show-1"}]]); the change removes it
   - ran: NoShowSweepJob.perform_now returned []
   - no PaymentGateway charge holds ([])
 rows: .holdfast/check/skip-tentative/check.jsonl; kept specs: spec/holdfast/skip-tentative/

@@ -55,11 +55,11 @@ module Holdfast
     # which files made it a change, and one that did not says so.
     def self.scope_line(change, here)
       base = "#{change.base_label} (#{change.short(change.base)})"
-      return "no change: checks run on the current tree only (#{change.short(change.head)}); app, lib, config, db and the Gemfile match #{base}" unless change.changed?
-      return "--here: checks run on the current tree only (#{change.short(change.head)}); the change against #{base} is not compared" if here
+      return "no change: checks run on the current tree only (#{change.tree_label}); app, lib, config, db and the Gemfile match #{base}" unless change.changed?
+      return "--here: checks run on the current tree only (#{change.tree_label}); the change against #{base} is not compared" if here
 
       files = Change.git(change.root, "diff", "--name-only", change.base, change.head, "--", *Holdfast::CODE).lines.map(&:strip)
-      "change: each runs on base #{base} and on the working tree (#{change.short(change.head)}); #{files.size} file(s) differ: #{files.first(5).join(", ")}#{" and #{files.size - 5} more" if files.size > 5}"
+      "change: each runs on base #{base} and on the working tree (#{change.tree_label}); #{files.size} file(s) differ: #{files.first(5).join(", ")}#{" and #{files.size - 5} more" if files.size > 5}"
     end
 
     # A file holds a list of suspicions (or `suspicions:` with one); each
@@ -79,7 +79,11 @@ module Holdfast
       raw += inline.map { [YAML.safe_load(quote_ruby(_1)), "--suspect"] }
       raise Holdfast::Error, "no suspicion given; pass a YAML file or --suspect" if raw.empty?
 
-      raw.each_with_index.map { |(h, from), i| suspicion(h, i, from) }
+      list = raw.each_with_index.map { |(h, from), i| suspicion(h, i, from) }
+      twice = list.group_by(&:id).select { _2.size > 1 }.values.map { _1.first.says }
+      raise Holdfast::Error, "two suspicions say #{twice.first.inspect}; give each its own `says`" if twice.any?
+
+      list
     end
 
     # `do: x.call(a: 1)` is Ruby, not a YAML mapping: a plain value of says,
@@ -155,7 +159,10 @@ module Holdfast
       set = acts.flat_map { ivars(_1, :write) }
       unset = expects.flat_map { ivars(_1[:ruby], :read) }.uniq - set
       raise Holdfast::Error, "#{label}: `expect` reads #{unset.join(", ")}, which no `do` sets; set it in `do`, or read the record by its `given` name" if unset.any?
-      Suspicion.new(id: "s#{i + 1}_#{Holdfast.slug(says.empty? ? acts.first : says).tr("-", "_")[0, 48].sub(/_\z/, "")}",
+      # Named by its text, not its place in the file: a kept spec from an
+      # earlier run is the same suspicion only when it says the same thing.
+      text = says.empty? ? acts.first : says
+      Suspicion.new(id: "#{Holdfast.slug(text).tr("-", "_")[0, 44].sub(/_\z/, "")}_#{Digest::SHA1.hexdigest(text)[0, 6]}",
                     says:, given: Hash(h["given"]), acts:, pause: h["pause"]&.to_s,
                     expects:, calls:, errors:, source: from, shared:)
     end

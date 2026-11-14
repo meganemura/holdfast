@@ -13,7 +13,7 @@ Add `gem "holdfast", require: false` to the app's `:test` group and run `bundle 
 
 1. Read the code. Write each thing you suspect in a file, one line of `says` and its `given`, `do` (or `race`) and `expect`. A race or a cross-area effect costs the same few lines; do not leave one "read, not run".
 2. `holdfast check suspicions.yml` (or `--suspect '<one YAML mapping>'`, repeatable). Run it from the app root.
-3. Keep each confirmed spec, `spec/holdfast/<branch>/<id>_spec.rb` (the header names the folder): it fails until the code is fixed. Report confirmed rows with their spec and refuted rows with what was observed. Fix each could_not_run suspicion and run again.
+3. Keep each confirmed spec, `spec/holdfast/<branch>/<id>_spec.rb` (the header names the folder; the id is the `says` text and a digest of it, so checking the same suspicion again replaces its spec, and two suspicions in one run must say different things): it fails until the code is fixed. Report confirmed rows with their spec and refuted rows with what was observed. Fix each could_not_run suspicion and run again.
 
 ```yaml
 - says: a passed tentative appointment is charged a no-show fee

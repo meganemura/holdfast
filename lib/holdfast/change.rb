@@ -48,10 +48,18 @@ module Holdfast
 
     def changed? = mode == "change"
     def short(sha) = sha[0, 7]
+
+    # A dirty tree's snapshot is a commit no `git log` shows; the reader
+    # gets the commit it sits on instead.
+    def tree_label
+      committed = Change.git(root, "rev-parse", "HEAD")
+      committed == head ? short(head) : "uncommitted changes on #{short(committed)}"
+    end
+
     def header
       case mode
-      when "change" then "change: #{base_label} (#{short(base)}) .. working tree (#{short(head)})"
-      when "before" then "before a change: pinning #{named.join(", ")} at #{short(head)}"
+      when "change" then "change: #{base_label} (#{short(base)}) .. working tree (#{tree_label})"
+      when "before" then "before a change: pinning #{named.join(", ")} at #{tree_label}"
       else "#{Change.git(root, "diff", "--quiet", base, head).then { "" } rescue "only tests, factories or docs differ from #{base_label}; " }nothing in the app changed against #{base_label} (#{short(base)})"
       end
     end

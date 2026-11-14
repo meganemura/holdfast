@@ -75,7 +75,7 @@ module Holdfast
       ran = pins.observed.count { !_1["input_error"] }
       kind = ran.zero? ? "unchecked" : "clean"
       rows << Verdict.of(target: pins.target.name, stage: "fill", kind:,
-                         reason: ran.zero? ? "no input ran" : "pinned #{ran} input(s) at #{change.short(change.head)} by what each returns, raises and writes",
+                         reason: ran.zero? ? "no input ran" : "pinned #{ran} input(s) at #{change.tree_label} by what each returns, raises and writes",
                          evidence: details + pins.target.tests.first(3).map { "selected test: #{_1}" },
                          scope: pins.dir.delete_prefix("#{change.root}/"),
                          next_step: ran.zero? ? "fix the inputs the evidence names, then holdfast run" : "make the change, then holdfast run; these pins are compared on both sides")
