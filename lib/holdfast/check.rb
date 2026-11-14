@@ -173,6 +173,8 @@ module Holdfast
       raise Holdfast::Error, "suspicion #{i + 1}: give `do` (one action) or `race` (two)" unless h["do"].nil? ^ h["race"].nil?
       raise Holdfast::Error, "suspicion #{i + 1}: `race` takes two actions" if h["race"] && Array(h["race"]).size != 2
       raise Holdfast::Error, "suspicion #{i + 1}: `expect` is missing" if h["expect"].to_s.strip.empty? && !h["expect"].is_a?(Array)
+      given = h["given"] || {}
+      raise Holdfast::Error, "suspicion #{i + 1}: `given` is a mapping of names to records (`given: { member: {} }`)" unless given.is_a?(Hash)
 
       # In a flow list (`expect: [a, x.where(id: 1).none?]`) YAML reads
       # `id: 1` as a mapping; the Ruby is joined back.
@@ -194,7 +196,7 @@ module Holdfast
       # `do` and `expect` share the locals `do` sets and the instance
       # variables of the object it runs on; a name `given` already has stays
       # the record, so the given blocks still read it.
-      shared = acts.flat_map { Prism.parse(_1).value.locals }.uniq - Hash(h["given"]).keys.map(&:to_sym)
+      shared = acts.flat_map { Prism.parse(_1).value.locals }.uniq - given.keys.map(&:to_sym)
       set = acts.flat_map { ivars(_1, :write) }
       unset = expects.flat_map { ivars(_1[:ruby], :read) }.uniq - set
       raise Holdfast::Error, "#{label}: `expect` reads #{unset.join(", ")}, which no `do` sets; set it in `do`, or read the record by its `given` name" if unset.any?
@@ -203,7 +205,7 @@ module Holdfast
       text = says.empty? ? acts.first : says #: String
       stem = Holdfast.slug(text).tr("-", "_")[0, 44] #: String
       Suspicion.new(id: "#{stem.sub(/_\z/, "")}_#{Digest::SHA1.hexdigest(text)[0, 6]}",
-                    says:, given: Hash(h["given"]), acts:, pause: h["pause"]&.to_s,
+                    says:, given:, acts:, pause: h["pause"]&.to_s,
                     expects:, calls:, errors:, source: from, shared:)
     end
 
