@@ -11,5 +11,9 @@ First release. holdfast runs what an agent suspects about a Rails app, on base a
 - Each app gets its own test database names through `DATABASE_URL`, so base, head, and other apps on one server do not share one.
 - Races and the hunt run on SQLite as well as PostgreSQL: they empty tables with `DELETE` and restart ids through `sqlite_sequence` where PostgreSQL takes `TRUNCATE`, and read stored days with `date()`. On SQLite each side and each hunt worker gets a database file of its own under `.holdfast/db/`, so the app's own test database is never written, and the repro line names that file.
 - A check that fails in holdfast's own support code, or a hunt whose drafting fails there, says so and names the database adapter, in place of telling the agent to fix the suspicion or the app.
+- The hunt refuses a TCP connection to any host but this machine. An area whose action reached a real service is `unchecked` with `environment: real network call to HOST:PORT`, not `bug_suspect`, and a drafted area names in a TODO the app module that calls HTTP itself.
+- Every hunt shrinks a failure, for a quarter of an area's time limit, between 15 and 60 seconds. Shrinking was off for any `--budget` under 900, the default of 600 included.
+- A request sent again no longer fails the area with an internal `Sequences::Diverged` when an action since destroyed its record.
+- A hunt never drafts over an area file that exists, so a merged area stays merged. The skill shows how to fake a service that calls HTTP itself with `outside_calls`, `failure` and `failures:`, and how to merge areas so a bug across two of them is reachable.
 - An agent skill in `skills/holdfast/`.
 - Ruby 3.4 or newer. Runtime dependencies: hegeltest 0.5.1, jitcatch and branchout (`~> 0.1`).

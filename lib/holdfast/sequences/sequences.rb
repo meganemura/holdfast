@@ -36,6 +36,43 @@ module Sequences
   # A replayed step whose record is missing: the run went another way.
   class Diverged < StandardError; end
 
+  # An action opened a TCP connection to another host: a service the area
+  # does not fake. Its answer (or a DNS failure) is the environment, not the
+  # app, and a write through it would reach a real system.
+  class RealNetwork < StandardError; end
+
+  LOOPBACK = /\A(localhost|127\.\d+\.\d+\.\d+|::1|0\.0\.0\.0)\z/
+
+  def self.network_calls = (@network_calls ||= {})
+
+  def self.real_network!(host, port)
+    return if host.nil? || LOOPBACK.match?(host.to_s)
+
+    where = "#{host}:#{port}"
+    (network_calls[where] ||= []) << Thread.current[:sequences_action].to_s
+    raise RealNetwork, "real network call to #{where}"
+  end
+
+  module NetworkGate
+    def initialize(host, port, *rest, **kw)
+      Sequences.real_network!(host, port)
+      super
+    end
+  end
+
+  module SocketGate
+    def tcp(host, port, *rest, **kw, &blk)
+      Sequences.real_network!(host, port)
+      super
+    end
+  end
+
+  def self.refuse_network!
+    require "socket"
+    TCPSocket.prepend(NetworkGate) unless TCPSocket <= NetworkGate
+    Socket.singleton_class.prepend(SocketGate) unless Socket.singleton_class <= SocketGate
+  end
+
   # A pause point is a method on a fake (or any class) where an action can be
   # held while another action runs.
   module Pause
@@ -512,8 +549,18 @@ end
 
     # Steps the app accepted, which a double click or a retried request
     # would send once more.
+    # A step whose record an action since destroyed (a withdrawal of the
+    # one parcel) has nothing left to send again: its pool index now points
+    # past the end.
     def accepted_steps
-      @log.select { |e| @definition.actions.key?(e[:step]) && e[:outcome] && !Sequences.kind(e[:outcome]).match?(/refused|HTTP 4/) }
+      @log.select do |e|
+        @definition.actions.key?(e[:step]) && e[:outcome] && !Sequences.kind(e[:outcome]).match?(/refused|HTTP 4/) &&
+          begin
+            resolve(@definition.actions.fetch(e[:step]), e[:args])
+          rescue Diverged
+            false
+          end
+      end
     end
 
     # Dates and times the app stored (due dates, deadlines, pauses), where a
@@ -878,6 +925,7 @@ end
     @first_failure = nil
 
     Rails.application.eager_load!
+    refuse_network!
     quiet_errors
     seeds = ENV["SEQ_SEEDS"]&.split(",")&.map { Integer(it) } || [seed || Random.new_seed % 2**31]
     report = { area: definition.name, cases: test_cases, seeds: [], skipped: definition.skipped, actions: checks(definition),
@@ -920,6 +968,7 @@ end
     tallies = @tallies&.transform_values(&:dup) || {}
     $stderr.puts coverage_report
     report[:reached] = tallies.transform_keys(&:to_s)
+    report[:network] = network_calls.transform_values { it.uniq.reject(&:empty?) }
     report[:refused_with] = (@examples || {}).transform_values { |seen| seen.sort_by { -it[1] }.map(&:first) }
     @examples = nil
     # A refusal quotes a response body, which Rack hands over as binary; a
@@ -940,6 +989,7 @@ end
 
   def self.observe(definition, out:)
     Rails.application.eager_load!
+    refuse_network!
     quiet_errors
     length = Integer(ENV.fetch("SEQ_OBSERVE_LENGTH", "3"))
     cap = Integer(ENV.fetch("SEQ_OBSERVE_CAP", "240"))
@@ -1152,6 +1202,7 @@ end
   # groups actions into areas by it.
   def self.probe(definition, walks: 60, steps: 20, seed: 1)
     Rails.application.eager_load!
+    refuse_network!
     quiet_errors
     random = Random.new(seed)
     stats = Hash.new { |h, k| h[k] = { writes: Hash.new(0), reads: Hash.new(0), outcomes: Hash.new(0), errors: Hash.new(0), refusals: [], runs: 0 } }
@@ -1255,6 +1306,7 @@ end
 
   def self.replay(definition, entries)
     Rails.application.eager_load!
+    refuse_network!
     runner = Runner.new(definition)
     runner.reset!(sizes: world_sizes(entries))
     runner.replay(entries)

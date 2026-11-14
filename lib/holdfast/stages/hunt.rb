@@ -34,8 +34,10 @@ module Holdfast
 
         per_area = [budget * 4 / [areas.size, 4].max, 60].max
         cases = budget >= 900 ? 300 : 60
-        # Shrinking a failure takes minutes; a short hunt reports it as found.
-        env["SEQ_NO_SHRINK"] = "1" if budget < 900
+        # Shrinking a failure can take minutes, and an unshrunk sequence of a
+        # dozen steps hides the one that matters: every hunt shrinks, for a
+        # quarter of an area's time limit, between 15 and 60 s.
+        env["SEQ_SHRINK_SECONDS"] ||= ENV.fetch("SEQ_SHRINK_SECONDS", (per_area / 4).clamp(15, 60).to_s)
         json = File.join(work, "table.json")
         FileUtils.rm_f(json)
         out, = Open3.capture2e(env, RbConfig.ruby, File.join(SEQUENCES, "run.rb"), "-j", "4", "--cases", cases.to_s, "--seeds", "1",
@@ -70,7 +72,7 @@ module Holdfast
         worst = thin.first&.first
         step = worst ? "start with #{worst["area"]}: make the records or the sign-in its unreached actions need in #{worst["file"].to_s.delete_prefix("#{change.root}/")}, then holdfast run" :
                        "read each area's row below for the refusals, fix the setup or the sign-in in its file, then holdfast run"
-        row("(hunt)", "unchecked", "unreached: #{total - reached} of #{total} actions (refused every time or never drawn); #{thin.size} of #{counts.size} areas reached under half",
+        row("(hunt)", "unchecked", "unreached: #{total - reached} of #{total} actions (refused every time or never drawn); #{thin.size} of #{counts.size} areas reached under half#{" (#{table.size - counts.size} area(s) that failed are not counted)" if table.size > counts.size}",
             evidence, "#{step}; until then the hunt says little about these areas")
       end
 
@@ -102,7 +104,8 @@ module Holdfast
           _, status = Open3.capture2e(probe_env, "/bin/sh", "-c", record.side_setup, chdir: change.root)
           return row("(sequences)", "unchecked", "the probe database did not set up", [], "holdfast run --learn") unless status.success?
         end
-        return nil if Dir.glob(File.join(dir, "*.rb")).size > 1
+        # An area a person kept, merged or wrote is never drafted over.
+        return nil if Dir.glob(File.join(dir, "*.rb")).any? { File.basename(_1) != "invariants.rb" }
 
         out, status = Open3.capture2e(probe_env, "bundle", "exec", "ruby", File.join(SEQUENCES, "propose.rb"), "--all", chdir: change.root)
         return nil if status.success?
@@ -172,7 +175,12 @@ module Holdfast
 
           row(area, "clean", "every action, offset replay and door pair reached its target (#{scope})", [], "nothing; the claim covers only these seeds and cases", scope:)
         else
-          row(area, "unchecked", lines.first.to_s.delete_prefix("unchecked: "), ["log: #{log}"], "read the log, fix the setup it names, then holdfast run")
+          reason = lines.first.to_s.delete_prefix("unchecked: ")
+          if reason.start_with?("real network call")
+            return row(area, "unchecked", "environment: #{reason}", ["log: #{log}"],
+                       "replace the service's methods with a fake in #{r["file"].to_s.delete_prefix("#{change.root}/")} and declare it with outside_calls (the skill shows how), then holdfast run")
+          end
+          row(area, "unchecked", reason, ["log: #{log}"], "read the log, fix the setup it names, then holdfast run")
         end
       end
 

@@ -68,4 +68,31 @@ class SqliteTest < Minitest::Test
       refute File.exist?(File.join(app, "storage", "test.sqlite3")), "the app's own test database is never written"
     end
   end
+
+  # A service that calls Net::HTTP itself has no `.client` a spec replaces:
+  # its real call is the environment, never a bug_suspect row.
+  def test_a_real_network_call_in_the_hunt_is_the_environment_and_the_draft_names_the_service
+    Dir.mktmpdir("holdfast-sqlite") do |dir|
+      app = sqlite_clinic(dir)
+      File.write(File.join(app, "app", "services", "arrival_notice.rb"), <<~RUBY)
+        require "net/http"
+
+        module ArrivalNotice
+          def self.send_for(appointment) = Net::HTTP.post(URI("http://notices.invalid/arrivals"), appointment.id.to_s)
+        end
+      RUBY
+      check_in = File.join(app, "app", "services", "check_in.rb")
+      File.write(check_in, File.read(check_in).sub("    @appointment\n  end", "    ArrivalNotice.send_for(@appointment)\n    @appointment\n  end"))
+      Open3.capture2e("git", "add", "-A", chdir: app)
+      Open3.capture2e("git", "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-qm", "notice", chdir: app)
+      out, = holdfast(app, "run", "--budget", "30")
+      rows = File.readlines(File.join(app, ".holdfast", "verdicts.jsonl")).map { JSON.parse(_1) }
+      network = rows.select { _1["reason"].to_s.include?("real network call to notices.invalid:80") }
+      refute_empty network, out
+      network.each { assert_equal "unchecked", _1["kind"], out }
+      refute(rows.any? { _1["kind"] == "bug_suspect" && _1["reason"].include?("notices.invalid") }, out)
+      drafted = Dir[File.join(app, ".holdfast", "sequences", "*.rb")].map { File.read(_1) }.join
+      assert_includes drafted, "TODO: ArrivalNotice calls a real host"
+    end
+  end
 end

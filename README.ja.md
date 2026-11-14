@@ -154,29 +154,25 @@ base にないメソッド、カラム、ルートを呼ぶ疑いは head でだ
 次に、それらのアクションをランダムな順序でテスト用データベースに対して走らせます。
 その際、不変条件、別のタイムゾーン、外部呼び出しでの二つのアクションの割り込み、最初のバッチ読み込みの後で止めたジョブ、受け付けられたリクエストをもう一度送ることを試します。
 失敗は最短のシーケンスまで縮められます（縮める時間は最大 60 秒です）。
+このマシン以外のホストへの接続は拒み、その領域は本物のサービスを呼んだと報告します。
+そのサービスの偽物は、領域のファイルに書きます。
 `--budget SECONDS` で実行時間の上限を決めます（既定は 600）。
 クリニックアプリで、上限を 120 秒にした出力です。
 
 ```text
 # holdfast
 
-nothing in the app changed against main (27257f9)
-note: hunt: unreached: 1 of 2 actions (refused every time or never drawn); 0 of 1 areas reached under half
-seconds: record 10.1, hunt 16.8
+nothing in the app changed against main (b5c13d9)
+seconds: record 4.6, hunt 40.8
 
-unintended_change=0 bug_suspect=1 unchecked=1 intended_change=0 clean=0
+unintended_change=0 bug_suspect=1 unchecked=0 intended_change=0 clean=0
 
 ## Suspected bugs
 
-- `sequences: check_ins`: no_show_sweep_job loaded Appointment#1 with status "booked"; check_ins_create set it to "checked_in" while no_show_sweep_job held it; no_show_sweep_job then wrote "no_show", though its own query does not select a row whose status is "checked_in"
-  - failure: no_show_sweep_job loaded Appointment#1 with status "booked"; check_ins_create set it to "checked_in" while no_show_sweep_job held it; no_show_sweep_job then wrote "no_show", though its own query does not select a row whose status is "checked_in"
+- `sequences: check_ins`: no_show_sweep_job loaded Appointment#1 with status "booked"; check_ins_create set it to "checked_in" while no_show_sweep_job held it; no_show_sweep_job then wrote "no_show", though its own query does not select a row whose status is "checked_in" (shrinking stopped after 30 s)
+  - failure: no_show_sweep_job loaded Appointment#1 with status "booked"; check_ins_create set it to "checked_in" while no_show_sweep_job held it; no_show_sweep_job then wrote "no_show", though its own query does not select a row whose status is "checked_in" (shrinking stopped after 30 s)
   - log: .holdfast/runs/sequences/check_ins.log (the shortest sequence and an `it` block that replays it)
   - next: paste the `it` block from the log into .holdfast/sequences/check_ins.rb, see it fail, fix the code, run again
-
-## Not checked
-
-- `(hunt)`: unreached: 1 of 2 actions (refused every time or never drawn); 0 of 1 areas reached under half
-  - next: read each area's row below for the refusals, fix the setup or the sign-in in its file, then holdfast run; until then the hunt says little about these areas
 rows: .holdfast/verdicts.jsonl
 ```
 

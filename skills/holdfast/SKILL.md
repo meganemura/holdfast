@@ -89,7 +89,34 @@ Sequences.everywhere do
 end
 ```
 
-A `bug_suspect` row names the broken rule, and its log holds the shortest sequence as a numbered narrative and an `it` block that replays it. Shrinking stops 60 s after the first failure (`SEQ_SHRINK_SECONDS`), and the row then says `shrinking stopped`; when the area's time limit cut it first, the row says `not shrunk`. Either way the log holds the shortest sequence found so far. A twins pair the two doors cannot feed the same inputs (one picks a record the other takes from the sign-in, or one makes a new unique value) is listed as not reached; drop the `twins` line or give both doors the same params. A partly checked area lists each action that was only refused (with up to three refusals, most common first, and the param to change) or never drawn: make the record in the area's `setup`, narrow a `pool`, or change the draws, then run again. An area the time limit stopped between cases says `cut by the time limit after N of M cases`; what ran still counts.
+The hunt refuses a TCP connection to any host but this machine: an action that reaches a real service makes its area `unchecked` with `environment: real network call to HOST:PORT`, never `bug_suspect`. The drafted area fakes a service the specs install as `X.client = FakeX.new`, and names in a TODO a module that calls HTTP itself. Fake that one in the area file, list the fake in `outside_calls` (each of its methods becomes a pause point for interleavings and its state is rolled back with each trial), and arm its failures:
+
+```ruby
+class FakeCourier # the courier as the app sees it: what it booked, and one armed outage
+  attr_reader :booked
+  def initialize = (@booked = []) && (@down = false)
+  def go_down! = (@down = true)
+  def book(order_id)
+    raise Courier::Unavailable, "fake outage" if @down && !(@down = false)
+
+    @booked << order_id
+  end
+end
+Courier.define_singleton_method(:book) { |order_id| $courier.book(order_id) }
+
+Sequences.define("desk") do
+  outside_calls FakeCourier
+  setup { $courier = FakeCourier.new; create_list(:order, world_size(:orders, 1..3)) }
+  pool(:orders) { Order.order(:id) }
+  failure(:courier_down) { $courier.go_down! } # an action that lists it also runs as its own step with the fake armed
+  action(:ship, order: :orders, failures: [:courier_down]) { |order:| http.post "/orders/#{order.id}/shipment" }
+  action(:cancel, order: :orders) { |order:| http.post "/orders/#{order.id}/cancellation" }
+end
+```
+
+Each drafted area holds the actions that write the same tables, so a bug that needs two areas (a withdrawal, then the intake job) is out of reach. Merge them: move the pools, actions, failures and invariants into one `Sequences.define` and delete the other files. A hunt drafts again only when `.holdfast/sequences/` holds no area, so a merged area stays.
+
+A `bug_suspect` row names the broken rule, and its log holds the shortest sequence as a numbered narrative and an `it` block that replays it. Every hunt shrinks: shrinking stops after a quarter of the area's time limit, between 15 and 60 s (`SEQ_SHRINK_SECONDS` sets it), and the row then says `shrinking stopped`; when the area's time limit cut it first, the row says `not shrunk`. Either way the log holds the shortest sequence found so far. A twins pair the two doors cannot feed the same inputs (one picks a record the other takes from the sign-in, or one makes a new unique value) is listed as not reached; drop the `twins` line or give both doors the same params. A partly checked area lists each action that was only refused (with up to three refusals, most common first, and the param to change) or never drawn: make the record in the area's `setup`, narrow a `pool`, or change the draws, then run again. An area the time limit stopped between cases says `cut by the time limit after N of M cases`; what ran still counts.
 
 ## When setup fails
 

@@ -595,6 +595,28 @@ module Propose
     end.uniq
   end
 
+  # App modules that talk HTTP themselves (`Net::HTTP.start` inside
+  # `LockerApi.register`) rather than through a `.client` a spec replaces:
+  # the hunt refuses their real calls, so a person writes the fake.
+  def http_services
+    @http_services ||= (Rails.root.glob("app/**/*.rb") + Rails.root.glob("lib/**/*.rb")).filter_map do |file|
+      text = File.read(file)
+      next unless text.match?(/\bNet::HTTP\b|\bFaraday\b|\bHTTParty\b|\bHTTP\.(get|post|put|patch|delete)\b/)
+
+      text[/^\s*(?:module|class)\s+([A-Z][\w:]*)/, 1]
+    end.uniq
+  end
+
+  def network_note(selected)
+    names = selected.map { it.name.to_s }
+    seen = Sequences.network_calls.select { |_, actions| (actions & names).any? }.keys
+    services = http_services.select { |service| selected.any? { static_constants(it.file).include?(service) } }
+    return [] if seen.empty? && services.empty?
+
+    ["TODO: #{services.any? ? services.join(", ") : "an action here"} calls a real host#{" (#{seen.join(", ")} in the probe)" if seen.any?}; the hunt refuses real network calls.",
+     "Replace its methods with a fake before setup, list the fake in outside_calls, and arm its failures (see the skill)."]
+  end
+
   # Methods a fake has and the real client does not, named like a failure:
   # each becomes a `failure`. One with a required argument needs a person
   # to say which record it fails for.
@@ -1147,6 +1169,7 @@ end
     armed = failures.select { |f| f.code.start_with?("failure") && selected.any? { reached.(it).include?(f.service) } }
     out = +"Sequences.define(#{name.inspect}) do\n"
     out << "  # #{note}\n" if note
+    network_note(selected).each { out << "  # #{it}\n" }
     out << "  setup do\n"
     fakes.each { |service, fake| out << "    #{service}.client = #{fake}.new\n" }
     (api_auth[:envs].map { it[1] } | controller_envs).uniq.each { |env| out << "    ENV[#{env.inspect}] = \"sequences-#{env.downcase.tr("_", "-")}\"\n" }

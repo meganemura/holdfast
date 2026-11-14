@@ -112,6 +112,12 @@ def verdict(r, limit)
     return ["unchecked", "-", "unchecked: #{r[:status] == :timeout ? "timed out after #{limit} s" : "no report (#{tail[0, 100]})"}"]
   end
   done, total, missing = scope(rep)
+  # A failure or a refusal that came from a real service says nothing about
+  # the app; the area checks nothing until the service is faked.
+  unless rep["network"].to_h.empty?
+    calls = rep["network"].map { |where, actions| "#{where}#{" (from #{actions.join(", ")})" unless actions.empty?}" }
+    return ["unchecked", "#{done}/#{total}", "unchecked: real network call to #{calls.join(", ")}; the hunt refuses it, so fake that service in the area's setup"]
+  end
   # The time limit stopped the area between cases with no failure found:
   # what ran still counts, and the row says it was cut short.
   if rep["verdict"].nil?
