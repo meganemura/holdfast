@@ -89,6 +89,29 @@ class SqliteTest < Minitest::Test
     end
   end
 
+  # Drafting reads every controller of the app, so one form it could not
+  # read failed the whole hunt.
+  def test_drafting_reads_a_controller_that_permits_nothing
+    Dir.mktmpdir("holdfast-sqlite") do |dir|
+      app = sqlite_clinic(dir)
+      File.write(File.join(app, "app", "controllers", "reschedules_controller.rb"), <<~RUBY)
+        class ReschedulesController < ActionController::API
+          def create
+            Appointment.find(params[:id]).update!(params.require(:appointment).permit)
+            head :ok
+          end
+        end
+      RUBY
+      routes = File.join(app, "config", "routes.rb")
+      File.write(routes, File.read(routes).sub(/^end/, %(  post "/appointments/:id/reschedule", to: "reschedules#create"\nend)))
+      Open3.capture2e("git", "add", "-A", chdir: app)
+      Open3.capture2e("git", "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-qm", "reschedule", chdir: app)
+      out, = holdfast(app, "run", "--budget", "30")
+      refute_includes out, "holdfast failed", out
+      assert File.file?(File.join(app, ".holdfast", "sequences", "reschedules.rb")), out
+    end
+  end
+
   # A service that calls Net::HTTP itself has no `.client` a spec replaces:
   # its real call is the environment, never a bug_suspect row.
   def test_a_real_network_call_in_the_hunt_is_the_environment_and_the_draft_names_the_service

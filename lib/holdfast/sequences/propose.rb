@@ -187,7 +187,7 @@ module Propose
                         found_permit
                       end #: untyped
         found[key] ||= if outer&.name == :permit
-                         [:nested, outer.arguments.arguments.grep(Prism::SymbolNode).map { it.unescaped.to_sym }]
+                         [:nested, Array(outer.arguments&.arguments).grep(Prism::SymbolNode).map { it.unescaped.to_sym }]
                        elsif each_permit
                          [:nested_list, Array(each_permit.arguments&.arguments).grep(Prism::SymbolNode).map { it.unescaped.to_sym }]
                        elsif %i[read original_filename path].include?(outer&.name) then [:upload]

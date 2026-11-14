@@ -7,6 +7,7 @@
 - A pin is no longer drafted from a scope given as a block argument (`scope :open, &OPEN`): its row names no def found in place of failing.
 - A pin is no longer drafted from a scope whose lambda reads `it` or `_1`: its row asks for the inputs as it does for any other parameter, in place of failing.
 - `holdfast check` refuses a suspicion whose `given` is not a mapping (`given: member`) by name, in place of failing with `TypeError: can't convert String into Hash`.
+- The hunt no longer fails to draft its areas when a controller calls `permit` with no arguments (`params.require(:appointment).permit`).
 
 ## [0.2.0] - 2026-11-14
 
