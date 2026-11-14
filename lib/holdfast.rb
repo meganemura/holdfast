@@ -20,6 +20,10 @@ module Holdfast
   #   # result or a hunt table holds. Its values are whatever the file says.
   #   type json = Hash[String, untyped]
   #
+  #   # A value YAML.safe_load reads with no permitted classes: a suspicion
+  #   # file or a --suspect mapping.
+  #   type yaml = nil | bool | Integer | Float | String | Array[yaml] | Hash[yaml, yaml]
+  #
   #   # file => { "base" => [lines], "head" => [lines] } a diff changed.
   #   type changed_lines = Hash[String, Hash[String, Array[Integer]]]
   #

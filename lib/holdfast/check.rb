@@ -14,14 +14,17 @@ module Holdfast
     # @rbs!
     #   # One `expect` line: its text, the Ruby that checks it, what to show
     #   # when it fails, its operands, and the calls and errors it reads.
-    #   type expectation = Hash[Symbol, untyped]
+    #   type ivar_node = Prism::InstanceVariableWriteNode | Prism::InstanceVariableOperatorWriteNode | Prism::InstanceVariableOrWriteNode
+    #                  | Prism::InstanceVariableAndWriteNode | Prism::InstanceVariableTargetNode | Prism::InstanceVariableReadNode
+    #
+    #   type expectation = { text: String, ruby: String, observe: String?, ?parts: Array[[String, String, String]], calls: Array[[String, String]], errors: bool }
 
     # +calls+ are the [class, method] pairs `expect` counts; +shared+ the
     # locals `do` sets and `expect` reads.
     Suspicion = Data.define(
       :id, #: String
       :says, #: String
-      :given, #: Hash[untyped, untyped]
+      :given, #: Hash[yaml, yaml]
       :acts, #: Array[String]
       :pause, #: String?
       :expects, #: Array[expectation]
@@ -163,7 +166,7 @@ module Holdfast
       items.map(&:strip).reject(&:empty?)
     end
 
-    #: (untyped h, Integer i, String from) -> Suspicion
+    #: (yaml h, Integer i, String from) -> Suspicion
     def self.suspicion(h, i, from)
       raise Holdfast::Error, "suspicion #{i + 1} in #{from} is not a mapping" unless h.is_a?(Hash)
 
@@ -175,6 +178,8 @@ module Holdfast
       raise Holdfast::Error, "suspicion #{i + 1}: `expect` is missing" if h["expect"].to_s.strip.empty? && !h["expect"].is_a?(Array)
       given = h["given"] || {}
       raise Holdfast::Error, "suspicion #{i + 1}: `given` is a mapping of names to records (`given: { member: {} }`)" unless given.is_a?(Hash)
+      # YAML reads a bare name as a String.
+      given_names = given.keys #: Array[String]
 
       # In a flow list (`expect: [a, x.where(id: 1).none?]`) YAML reads
       # `id: 1` as a mapping; the Ruby is joined back.
@@ -189,14 +194,16 @@ module Holdfast
         errors ||= e[:errors]
         e
       end
-      acts = h["race"] ? h["race"].map(&:to_s) : [h["do"].to_s]
+      # `race` is a list or a mapping of two, checked above.
+      race = h["race"] #: Array[yaml] | Hash[yaml, yaml] | nil
+      acts = race ? race.map(&:to_s) : [h["do"].to_s]
       label = "suspicion #{i + 1}#{" (#{says})" unless says.empty?}"
       acts.each { |a| ruby!(a, "#{label}: `#{h["race"] ? "race" : "do"}`") }
       expects.each { |e| ruby!(e[:ruby], "#{label}: `expect: #{e[:text]}`") }
       # `do` and `expect` share the locals `do` sets and the instance
       # variables of the object it runs on; a name `given` already has stays
       # the record, so the given blocks still read it.
-      shared = acts.flat_map { Prism.parse(_1).value.locals }.uniq - given.keys.map(&:to_sym)
+      shared = acts.flat_map { Prism.parse(_1).value.locals }.uniq - given_names.map(&:to_sym)
       set = acts.flat_map { ivars(_1, :write) }
       unset = expects.flat_map { ivars(_1[:ruby], :read) }.uniq - set
       raise Holdfast::Error, "#{label}: `expect` reads #{unset.join(", ")}, which no `do` sets; set it in `do`, or read the record by its `given` name" if unset.any?
@@ -223,8 +230,9 @@ module Holdfast
 
     #: (String code, Symbol kind) -> Array[Symbol]
     def self.ivars(code, kind)
-      walk = ->(n) { [n, *n.compact_child_nodes.flat_map(&walk)] } #: ^(Prism::Node) -> Array[untyped]
-      walk.(Prism.parse(code).value).select { |n| IVAR_NODES.fetch(kind).any? { n.is_a?(_1) } }.map(&:name)
+      walk = ->(n) { [n, *n.compact_child_nodes.flat_map { walk.(_1) }] } #: ^(Prism::Node) -> Array[Prism::Node]
+      found = walk.(Prism.parse(code).value).select { |n| IVAR_NODES.fetch(kind).any? { n.is_a?(_1) } } #: Array[ivar_node]
+      found.map(&:name)
     end
 
     # The few lines an agent writes most often, and Ruby for the rest. Each
@@ -240,7 +248,7 @@ module Holdfast
       ruby = forms.each_with_index.map { |f, i| "#{" #{ops[i - 1]} " if i.positive?}#{short_form(f[:text]) ? "(#{f[:ruby]})" : f[:ruby]}" }.join
       parts = if ops.uniq.size == 1 then forms.map { [_1[:text], _1[:ruby], _1[:observe] || observed_side(_1[:ruby])] }
               else operands(ruby).map { [_1, _1, observed_side(_1)] }
-              end
+              end #: Array[[String, String, String]]
       { text: t, ruby:, observe: nil, parts:, calls: forms.flat_map { _1[:calls] }.uniq, errors: forms.any? { _1[:errors] } }
     end
 
@@ -250,10 +258,12 @@ module Holdfast
       when /\Ano error\z/i then { text: t, ruby: "error.nil?", observe: "error", calls: [], errors: true }
       when /\Araises ([A-Z][\w:]*)\z/ then { text: t, ruby: "error.is_a?(#{$1})", observe: "error", calls: [], errors: true }
       when /\Ano ([A-Z][\w:]*) (\w+)\z/
-        { text: t, ruby: "calls(#{$1}, :#{$2}).empty?", observe: "calls(#{$1}, :#{$2})", calls: [[$1, $2]], errors: false }
+        call = [$1, $2] #: [String, String]
+        { text: t, ruby: "calls(#{$1}, :#{$2}).empty?", observe: "calls(#{$1}, :#{$2})", calls: [call], errors: false }
       when /\A([A-Z][\w:]*) (\w+)(?: (once|twice|(\d+) times))?\z/
         n = { "once" => 1, "twice" => 2 }[$3] || $4&.to_i
-        { text: t, ruby: n ? "calls(#{$1}, :#{$2}).size == #{n}" : "calls(#{$1}, :#{$2}).any?", observe: "calls(#{$1}, :#{$2})", calls: [[$1, $2]], errors: false }
+        call = [$1, $2] #: [String, String]
+        { text: t, ruby: n ? "calls(#{$1}, :#{$2}).size == #{n}" : "calls(#{$1}, :#{$2}).any?", observe: "calls(#{$1}, :#{$2})", calls: [call], errors: false }
       end
     end
 
@@ -294,7 +304,7 @@ module Holdfast
       pieces.any?(&:empty?) ? [[text], []] : [pieces, ops] #: [Array[String], Array[String]]
     end
 
-    #: (String ruby) -> untyped
+    #: (String ruby) -> Prism::Node?
     def self.top_node(ruby)
       node = Prism.parse(ruby).value.statements.body.first
       node = node.body.body.first while node.is_a?(Prism::ParenthesesNode) && node.body.is_a?(Prism::StatementsNode) && node.body.body.size == 1
@@ -329,7 +339,7 @@ module Holdfast
     RELATIVE = /\A([+-]?)(\d+)\s*(s|m|min|h|d|w)\z/ #: Regexp
     UNITS = { "s" => "seconds", "m" => "minutes", "min" => "minutes", "h" => "hours", "d" => "days", "w" => "weeks" }.freeze #: Hash[String, String]
 
-    #: (untyped v, Array[String] names) -> String
+    #: (yaml v, Array[String] names) -> String
     def self.value(v, names)
       case v
       when RELATIVE
@@ -345,7 +355,7 @@ module Holdfast
       end
     end
 
-    #: (Hash[untyped, untyped] given) -> Array[String]
+    #: (Hash[yaml, yaml] given) -> Array[String]
     def self.given_lines(given)
       names = [] #: Array[String]
       given.map do |name, attrs|
@@ -358,7 +368,8 @@ module Holdfast
           ruby = attrs.is_a?(String) ? attrs : attrs.inspect
           next "build :#{name}, #{ruby.inspect} do #{ruby} end"
         end
-        attrs = Hash(attrs).transform_keys(&:to_s)
+        mapping = attrs || {} #: Hash[yaml, yaml]
+        attrs = mapping.transform_keys(&:to_s)
         opts = [] #: Array[String]
         opts << "factory: :#{attrs.delete("factory")}" if attrs.key?("factory")
         opts << "traits: #{Array(attrs.delete("traits")).map { ":#{_1}" }.join(", ").then { "[#{_1}]" }}" if attrs.key?("traits")

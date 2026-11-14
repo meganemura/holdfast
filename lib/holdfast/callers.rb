@@ -23,7 +23,8 @@ module Holdfast
     )
 
     # jitcatch's index of one side and its call graph are not part of its
-    # published interface, so they stay untyped here.
+    # published interface, so what `send` returns stays untyped here; only
+    # the method records read from it are typed.
     #: (JitCatch::Changes jc, json brief, Change change) -> Array[Target]
     def self.targets(jc, brief, change)
       values = brief["methods"].filter_map { value_of(_1, brief, change) }
@@ -43,7 +44,7 @@ module Holdfast
           jc.send(:callers_by_depth, c, edges, 1).each_key { found[_1] ||= [v, c] unless skip?(_1, known) }
         end
       end
-      found.first(CAP).filter_map { |name, (v, through)| target(name, v, through, head_idx, base_idx, change) }
+      found.first(CAP).filter_map { |name, (v, through)| target(name, v, through, head_idx["methods"], base_idx["methods"], change) }
     end
 
     # A value this module walks from: a method the brief marks as affected by
@@ -70,10 +71,10 @@ module Holdfast
         name.split(/[#.]/).first.end_with?("Controller") || name.end_with?("#initialize")
     end
 
-    #: (String name, Value v, String through, untyped head_idx, untyped base_idx, Change change) -> Target?
-    def self.target(name, v, through, head_idx, base_idx, change)
-      node = head_idx["methods"].find { _1.qualified == name } or return nil
-      old = base_idx["methods"].find { _1.qualified == name }
+    #: (String name, Value v, String through, Array[JitCatch::SourceIndex::Method] head_methods, Array[JitCatch::SourceIndex::Method] base_methods, Change change) -> Target?
+    def self.target(name, v, through, head_methods, base_methods, change)
+      node = head_methods.find { _1.qualified == name } or return nil
+      old = base_methods.find { _1.qualified == name }
       via = v.constant ? "#{v.method["name"]}, which reads #{v.constant}" : v.method["name"]
       why = through == v.method["name"] ? "calls #{via}" : "calls #{through}, which calls #{via}"
       reads = { "via" => v.method["name"], "constant" => v.constant, "model" => v.model, "column" => v.column,
@@ -85,7 +86,7 @@ module Holdfast
 
     # Test files at base that name the caller's method, or its class and a
     # request into it; coverage in the run decides which ones reached it.
-    #: (Change change, untyped node) -> Array[String]
+    #: (Change change, JitCatch::SourceIndex::Method node) -> Array[String]
     def self.tests_for(change, node)
       bare = node.bare_name
       owner = node.qualified.split(/[#.]/).first.split("::").last

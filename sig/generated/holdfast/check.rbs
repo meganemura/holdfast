@@ -13,7 +13,9 @@ module Holdfast
 
     # One `expect` line: its text, the Ruby that checks it, what to show
     # when it fails, its operands, and the calls and errors it reads.
-    type expectation = Hash[Symbol, untyped]
+    type ivar_node = Prism::InstanceVariableWriteNode | Prism::InstanceVariableOperatorWriteNode | Prism::InstanceVariableOrWriteNode | Prism::InstanceVariableAndWriteNode | Prism::InstanceVariableTargetNode | Prism::InstanceVariableReadNode
+
+    type expectation = { text: String, ruby: String, observe: String?, ?parts: Array[[ String, String, String ]], calls: Array[[ String, String ]], errors: bool }
 
     # +calls+ are the [class, method] pairs `expect` counts; +shared+ the
     # locals `do` sets and `expect` reads.
@@ -22,7 +24,7 @@ module Holdfast
 
       attr_reader says(): String
 
-      attr_reader given(): Hash[untyped, untyped]
+      attr_reader given(): Hash[yaml, yaml]
 
       attr_reader acts(): Array[String]
 
@@ -38,8 +40,8 @@ module Holdfast
 
       attr_reader shared(): Array[Symbol]
 
-      def self.new: (String id, String says, Hash[untyped, untyped] given, Array[String] acts, String? pause, Array[expectation] expects, Array[[ String, String ]] calls, bool errors, String source, Array[Symbol] shared) -> instance
-                  | (id: String, says: String, given: Hash[untyped, untyped], acts: Array[String], pause: String?, expects: Array[expectation], calls: Array[[ String, String ]], errors: bool, source: String, shared: Array[Symbol]) -> instance
+      def self.new: (String id, String says, Hash[yaml, yaml] given, Array[String] acts, String? pause, Array[expectation] expects, Array[[ String, String ]] calls, bool errors, String source, Array[Symbol] shared) -> instance
+                  | (id: String, says: String, given: Hash[yaml, yaml], acts: Array[String], pause: String?, expects: Array[expectation], calls: Array[[ String, String ]], errors: bool, source: String, shared: Array[Symbol]) -> instance
 
       def self.members: () -> [ :id, :says, :given, :acts, :pause, :expects, :calls, :errors, :source, :shared ]
 
@@ -105,8 +107,8 @@ module Holdfast
     # : (String text) -> Array[String]
     def self.flow_items: (String text) -> Array[String]
 
-    # : (untyped h, Integer i, String from) -> Suspicion
-    def self.suspicion: (untyped h, Integer i, String from) -> Suspicion
+    # : (yaml h, Integer i, String from) -> Suspicion
+    def self.suspicion: (yaml h, Integer i, String from) -> Suspicion
 
     # A line that is not Ruby fails here, before any database work, naming
     # the line, instead of as a spec rspec cannot load.
@@ -135,8 +137,8 @@ module Holdfast
     # : (String text) -> [Array[String], Array[String]]
     def self.logic_split: (String text) -> [ Array[String], Array[String] ]
 
-    # : (String ruby) -> untyped
-    def self.top_node: (String ruby) -> untyped
+    # : (String ruby) -> Prism::Node?
+    def self.top_node: (String ruby) -> Prism::Node?
 
     # `a && b && c` is three operands, so a failed line can name the one
     # that failed; a single comparison has none.
@@ -151,11 +153,11 @@ module Holdfast
 
     UNITS: Hash[String, String]
 
-    # : (untyped v, Array[String] names) -> String
-    def self.value: (untyped v, Array[String] names) -> String
+    # : (yaml v, Array[String] names) -> String
+    def self.value: (yaml v, Array[String] names) -> String
 
-    # : (Hash[untyped, untyped] given) -> Array[String]
-    def self.given_lines: (Hash[untyped, untyped] given) -> Array[String]
+    # : (Hash[yaml, yaml] given) -> Array[String]
+    def self.given_lines: (Hash[yaml, yaml] given) -> Array[String]
 
     # : (Suspicion s, Record record) -> String
     def self.spec: (Suspicion s, Record record) -> String

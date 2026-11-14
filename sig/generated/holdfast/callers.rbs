@@ -36,7 +36,8 @@ module Holdfast
     end
 
     # jitcatch's index of one side and its call graph are not part of its
-    # published interface, so they stay untyped here.
+    # published interface, so what `send` returns stays untyped here; only
+    # the method records read from it are typed.
     # : (JitCatch::Changes jc, json brief, Change change) -> Array[Target]
     def self.targets: (JitCatch::Changes jc, json brief, Change change) -> Array[Target]
 
@@ -48,13 +49,13 @@ module Holdfast
     # : (String name, Array[String] known) -> bool
     def self.skip?: (String name, Array[String] known) -> bool
 
-    # : (String name, Value v, String through, untyped head_idx, untyped base_idx, Change change) -> Target?
-    def self.target: (String name, Value v, String through, untyped head_idx, untyped base_idx, Change change) -> Target?
+    # : (String name, Value v, String through, Array[JitCatch::SourceIndex::Method] head_methods, Array[JitCatch::SourceIndex::Method] base_methods, Change change) -> Target?
+    def self.target: (String name, Value v, String through, Array[JitCatch::SourceIndex::Method] head_methods, Array[JitCatch::SourceIndex::Method] base_methods, Change change) -> Target?
 
     # Test files at base that name the caller's method, or its class and a
     # request into it; coverage in the run decides which ones reached it.
-    # : (Change change, untyped node) -> Array[String]
-    def self.tests_for: (Change change, untyped node) -> Array[String]
+    # : (Change change, JitCatch::SourceIndex::Method node) -> Array[String]
+    def self.tests_for: (Change change, JitCatch::SourceIndex::Method node) -> Array[String]
 
     # The string elements of the first array literal in a source line.
     # : (String?) -> Array[String]

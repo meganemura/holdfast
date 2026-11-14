@@ -27,3 +27,18 @@ module JitCatch
     def self.apply: (Hash[String, untyped] doc) -> Hash[String, untyped]
   end
 end
+
+# The method records of jitcatch's source index, which Changes keeps
+# private; holdfast reads them for the second hop of a caller.
+module JitCatch
+  class SourceIndex
+    class Method
+      def file: () -> String
+      def bare_name: () -> String
+      def qualified: () -> String
+      def start_line: () -> Integer
+      def end_line: () -> Integer
+      def source: () -> String
+    end
+  end
+end
