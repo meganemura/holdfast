@@ -17,6 +17,16 @@ module HoldfastCheck
   #   self.@routes: Array[[String, String]]
   #   type given_block = ^() [self: World] -> untyped
   #   type scope_block = ^() [self: Scope] -> untyped
+  #
+  #   # The handoff between a held action and the main thread.
+  #   type gate = { point: String, paused: Thread::Queue, go: Thread::Queue, passed: bool, ?held_at: String }
+  #
+  #   # How one action ended: its value or its error, the scope it ran in,
+  #   # the line a row shows, and in a race where the first one was held.
+  #   type outcome = { ?result: untyped, ?error: Exception, ?scope: Scope?, shown: String, ?could_not_run: CouldNotRun, ?held_at: String?, ?paused: String }
+  #
+  #   # An outside-service method `expect` counts: the module and the verb.
+  #   type call_spec = [Module, String | Symbol]
 
   # The world or the action could not be run; nothing was checked. +absent+
   # names the method, constant, attribute or route that does not exist, so a
@@ -45,7 +55,7 @@ module HoldfastCheck
   # tried in turn until one breaks `expect` in a way no serial order does.
   FALLBACKS = %w[outside_call row_lock first_write].freeze #: Array[String]
 
-  #: (Hash[Symbol, untyped]? gate, String point, String at) -> untyped
+  #: (gate? gate, String point, String at) -> void
   def self.hold(gate, point, at)
     return unless gate && gate[:point] == point && !gate[:passed]
 
@@ -55,12 +65,12 @@ module HoldfastCheck
     gate[:go].pop
   end
 
-  #: () -> Hash[Symbol, untyped]?
+  #: () -> gate?
   def self.gate = Thread.current[:holdfast_gate]
 
   # @rbs module-self ActiveRecord::Relation
   module BatchGate
-    #: () -> Array[untyped]
+    #: () -> Array[ActiveRecord::Base]
     def records
       depth = Thread.current[:holdfast_load_depth].to_i
       Thread.current[:holdfast_load_depth] = depth + 1
@@ -100,7 +110,7 @@ module HoldfastCheck
     end
   end
 
-  #: () -> untyped
+  #: () -> void
   def self.watch_writes
     adapter = ActiveRecord::Base.connection.class
     adapter.prepend(WriteGate) unless adapter <= WriteGate
@@ -115,7 +125,7 @@ module HoldfastCheck
 
   # Each order of a race starts from the same outside fakes: each client
   # gets its instance variables back as they were before the first.
-  #: () -> Array[[untyped, Hash[Symbol, String]]]
+  #: () -> Array[[Object, Hash[Symbol, String]]]
   def self.clients
     client_holders.filter_map do |mod|
       client = mod.instance_variable_get(:@client)
@@ -125,7 +135,7 @@ module HoldfastCheck
     end
   end
 
-  #: (Array[[untyped, Hash[Symbol, String]]] saved) -> Array[[untyped, Hash[Symbol, String]]]
+  #: (Array[[Object, Hash[Symbol, String]]] saved) -> Array[[Object, Hash[Symbol, String]]]
   def self.restore(saved) = saved.each { |client, ivars| ivars.each { client.instance_variable_set(_1, Marshal.load(_2)) } }
 
   #: () -> Array[Module]
@@ -169,7 +179,7 @@ module HoldfastCheck
     end
   end
   # rspec-mocks loads when the first example runs, after this file.
-  #: () -> untyped
+  #: () -> void
   def self.watch_stubs
     return unless defined?(RSpec::Mocks::MessageExpectation)
 
@@ -291,9 +301,9 @@ module HoldfastCheck
 
     # The records made so far, newest first, then what each belongs to, so a
     # hold made after a copy gets that copy's book.
-    #: () -> Array[untyped]
+    #: () -> Array[ActiveRecord::Base]
     def linkable
-      made = @records.values.flatten.grep(ActiveRecord::Base).reverse
+      made = @records.values.flatten.grep(ActiveRecord::Base).reverse #: Array[ActiveRecord::Base]
       made + made.flat_map { |r| r.class.reflect_on_all_associations(:belongs_to).reject(&:polymorphic?).filter_map { r.public_send(_1.name) } }
     end
 
@@ -335,7 +345,7 @@ module HoldfastCheck
     #: (Scope from, World world) -> Array[Symbol]
     def take_ivars(from, world) = from.own_ivars.each { instance_variable_set(_1, world.reload(from.instance_variable_get(_1))) }
 
-    #: (untyped owner, untyped verb) -> Array[untyped]
+    #: (Module owner, String | Symbol verb) -> Array[Array[untyped]]
     def calls(owner, verb) = @calls.of(owner, verb)
     #: (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
     def method_missing(name, *args, **kw, &blk) = @records.key?(name) && args.empty? ? @records[name] : @example.send(name, *args, **kw, &blk)
@@ -346,16 +356,17 @@ module HoldfastCheck
   # Every call to one method of an outside service's client (`PaymentGateway`
   # and `PaymentGateway.client` both name it), counted from the action on.
   class Calls
-    # @rbs @specs: Array[[untyped, untyped]]
-    # @rbs @seen: Hash[[String?, Symbol], Array[untyped]]
+    # The arguments of each call are the app's values.
+    # @rbs @specs: Array[call_spec]
+    # @rbs @seen: Hash[[String?, Symbol], Array[Array[untyped]]]
 
-    #: (Array[[untyped, untyped]] specs) -> void
+    #: (Array[call_spec] specs) -> void
     def initialize(specs) = (@specs = specs) && (@seen = Hash.new { |h, k| h[k] = [] })
 
-    #: () -> Array[[untyped, untyped]]
+    #: () -> Array[call_spec]
     def watch
       @specs.each do |owner, verb|
-        target = owner.respond_to?(:client) ? owner.client : owner
+        target = owner.respond_to?(:client) ? owner.public_send(:client) : owner
         seen = @seen
         key = [owner.name, verb.to_sym]
         # "no PaymentGateway charges" names the method `charge`.
@@ -370,7 +381,7 @@ module HoldfastCheck
       end
     end
 
-    #: (untyped owner, untyped verb) -> Array[untyped]
+    #: (Module owner, String | Symbol verb) -> Array[Array[untyped]]
     def of(owner, verb) = @seen[[owner.name, verb.to_sym]]
   end
 
@@ -396,7 +407,7 @@ module HoldfastCheck
   # action or two (a race at +pause+), +expects+ must all hold afterwards.
   # +calls+ lists the outside-service methods `expect` counts. +shared+ is
   # the example's binding, which holds the locals `do` sets and `expect` reads.
-  #: (String id, given: given_block, acts: Array[Act], expects: Array[Expect], ?calls: Array[[untyped, untyped]], ?pause: String?, ?errors: bool, ?shared: Binding?) -> void
+  #: (String id, given: given_block, acts: Array[Act], expects: Array[Expect], ?calls: Array[call_spec], ?pause: String?, ?errors: bool, ?shared: Binding?) -> void
   def holdfast_suspicion(id, given:, acts:, expects:, calls: [], pause: nil, errors: false, shared: nil)
     # @type var report: Hash[String, untyped]
     report = { "id" => id }
@@ -432,7 +443,7 @@ module HoldfastCheck
     "#{error.class}: #{error.message.lines.first.to_s.strip}#{own}#{at}"
   end
 
-  #: (given_block given, Array[Act] acts, Array[Expect] expects, Array[[untyped, untyped]] calls, String? pause, Binding? shared) -> Hash[String, untyped]
+  #: (given_block given, Array[Act] acts, Array[Expect] expects, Array[call_spec] calls, String? pause, Binding? shared) -> Hash[String, untyped]
   def holdfast_race(given, acts, expects, calls, pause, shared)
     Rails.application.eager_load!
     HoldfastCheck.watch_writes
@@ -480,7 +491,7 @@ module HoldfastCheck
     verdict.merge("orders" => orders, "pauses" => tried)
   end
 
-  #: (given_block given, Array[Act] acts, Array[Integer] positions, Array[Expect] expects, Array[[untyped, untyped]] call_specs, pause: String?, errors: bool, ?trace: bool, ?shared: Binding?) -> Hash[String, untyped]
+  #: (given_block given, Array[Act] acts, Array[Integer] positions, Array[Expect] expects, Array[call_spec] call_specs, pause: String?, errors: bool, ?trace: bool, ?shared: Binding?) -> Hash[String, untyped]
   def holdfast_once(given, acts, positions, expects, call_specs, pause:, errors:, trace: false, shared: nil)
     world = World.new(self)
     world.instance_exec(&given)
@@ -515,9 +526,9 @@ module HoldfastCheck
   end
 
   # Ruby expectations that name `calls(X, :verb)` count those calls too.
-  #: (Array[Expect] expects) -> Array[[untyped, String]]
+  #: (Array[Expect] expects) -> Array[call_spec]
   def self.counted(expects)
-    named = expects.flat_map { |e| e.text.scan(/calls\(\s*([A-Z][\w:]*)\s*,\s*:(\w+)\s*\)/) } #: Array[untyped]
+    named = expects.flat_map { |e| e.text.scan(/calls\(\s*([A-Z][\w:]*)\s*,\s*:(\w+)\s*\)/) } #: Array[[String, String]]
     named.uniq.filter_map do |owner, verb|
       [Object.const_get(owner), verb]
     rescue NameError
@@ -567,13 +578,14 @@ module HoldfastCheck
   # in `response.status == 200`.
   #: (String text, (String | Symbol)? name) -> String?
   def self.receiver_of(text, name)
-    walk = ->(n) { [n, *n.compact_child_nodes.flat_map(&walk)] } #: ^(Prism::Node) -> Array[untyped]
-    walk.(Prism.parse(text).value).find { _1.is_a?(Prism::CallNode) && _1.name == name && _1.receiver }&.receiver&.slice
+    walk = ->(n) { [n, *n.compact_child_nodes.flat_map(&walk)] } #: ^(Prism::Node) -> Array[Prism::Node]
+    call = walk.(Prism.parse(text).value).find { _1.is_a?(Prism::CallNode) && _1.name == name && _1.receiver } #: Prism::CallNode?
+    call&.receiver&.slice
   end
 
   # The app methods an action called, in order, so a race whose pause point
   # nobody reached can name where to pause instead.
-  #: (Array[String]? called) { () -> Hash[Symbol, untyped] } -> Hash[Symbol, untyped]
+  #: (Array[String]? called) { () -> outcome } -> outcome
   def holdfast_traced(called)
     return yield unless called
 
@@ -581,6 +593,7 @@ module HoldfastCheck
     tp = TracePoint.new(:call) do |t|
       next unless t.path.start_with?(root) && called.size < 40
 
+      # A singleton class here is the class it is attached to.
       defined = t.defined_class #: untyped
       owner = defined
       owner = owner.attached_object if owner.singleton_class?
@@ -619,7 +632,7 @@ module HoldfastCheck
 
         [r.verb.to_s, r.path.spec.to_s.sub("(.:format)", "")]
       end
-      grape = defined?(Grape::API) ? ObjectSpace.each_object(Class).select { _1 < Grape::API::Instance rescue false }.flat_map { |api| api.routes.map { [_1.request_method, _1.path.sub("(.json)", "").sub("(.:format)", "")] } } : [] #: Array[untyped]
+      grape = defined?(Grape::API) ? ObjectSpace.each_object(Class).select { _1 < Grape::API::Instance rescue false }.flat_map { |api| api.routes.map { [_1.request_method, _1.path.sub("(.json)", "").sub("(.:format)", "")] } } : [] #: Array[[String, String]]
       (rails + grape).uniq
     end
   end
@@ -639,7 +652,7 @@ module HoldfastCheck
   # means the action never ran as written. In a race, or when `expect`
   # names `error` or `raises`, every error is how the action ended, except
   # a name the tree does not have: that tree cannot run the suspicion.
-  #: (Hash[Symbol, untyped] records, Act act, errors: bool) -> Hash[Symbol, untyped]
+  #: (Hash[Symbol, untyped] records, Act act, errors: bool) -> outcome
   def holdfast_step(records, act, errors:)
     scope = Scope.new(self, records)
     result = scope.instance_exec(&act.block)
@@ -670,11 +683,11 @@ module HoldfastCheck
   # The first action runs on its own thread until it reaches the pause point;
   # the second runs to its end (or until it waits on a lock the first holds);
   # then the first goes on.
-  #: (World world, Array[Act] acts, String point) -> Array[Hash[Symbol, untyped]]
+  #: (World world, Array[Act] acts, String point) -> Array[outcome]
   def holdfast_interleave(world, acts, point)
-    gate = { point:, paused: Queue.new, go: Queue.new, passed: false } #: Hash[Symbol, untyped]
+    gate = { point:, paused: Queue.new, go: Queue.new, passed: false } #: gate
     first_records, second_records = world.fresh, world.fresh
-    outcomes = [] #: Array[Hash[Symbol, untyped]]
+    outcomes = [] #: Array[outcome]
     t1 = Thread.new do
       Thread.current[:holdfast_gate] = gate
       ActiveRecord::Base.connection_pool.with_connection { outcomes[0] = holdfast_step(first_records, acts[0], errors: true) }
@@ -699,15 +712,16 @@ module HoldfastCheck
     gate[:go].push(true)
     [t1, t2].each { raise CouldNotRun.new("race", "the two actions did not finish within 20 s (a deadlock?)") unless _1.join(20) }
     outcomes.each { raise _1[:could_not_run] if _1[:could_not_run] }
-    outcomes[0] = outcomes[0].merge(held_at: (gate[:held_at] if reached),
-                                    paused: reached ? "held at #{gate[:held_at]}#{"; the second waited on a lock" if waited}" : "never reached #{point}")
+    paused = reached ? "held at #{gate[:held_at]}#{"; the second waited on a lock" if waited}" : "never reached #{point}"
+    first = outcomes[0].merge(held_at: (gate[:held_at] if reached), paused:) #: outcome
+    outcomes[0] = first
     outcomes
   end
 
   # Whether the second action is still running after a second, or (on
   # PostgreSQL) sooner, as soon as its connection waits on a lock the held
   # action has: a fixed wait cost a second per held order.
-  #: (Thread thread, untyped pid, ?limit: Float) -> bool
+  #: (Thread thread, Integer? pid, ?limit: Float) -> bool
   def self.blocked?(thread, pid, limit: 1.0)
     return thread.join(limit).nil? unless pid
 
@@ -778,7 +792,7 @@ module HoldfastCheck
 
   # SQLite has no TRUNCATE; DELETE with the foreign keys off empties the
   # tables in any order, and sqlite_sequence holds the ids to restart.
-  #: () -> untyped
+  #: () -> void
   def holdfast_truncate
     conn = ActiveRecord::Base.connection
     tables = conn.tables - %w[schema_migrations ar_internal_metadata]

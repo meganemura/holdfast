@@ -13,6 +13,16 @@ module HoldfastCheck
 
   type scope_block = ^() [self: Scope] -> untyped
 
+  # The handoff between a held action and the main thread.
+  type gate = { point: String, paused: Thread::Queue, go: Thread::Queue, passed: bool, ?held_at: String }
+
+  # How one action ended: its value or its error, the scope it ran in,
+  # the line a row shows, and in a race where the first one was held.
+  type outcome = { ?result: untyped, ?error: Exception, ?scope: Scope?, shown: String, ?could_not_run: CouldNotRun, ?held_at: String?, ?paused: String }
+
+  # An outside-service method `expect` counts: the module and the verb.
+  type call_spec = [ Module, String | Symbol ]
+
   # The world or the action could not be run; nothing was checked. +absent+
   # names the method, constant, attribute or route that does not exist, so a
   # base that predates a feature reads as that, not as a failure.
@@ -33,16 +43,16 @@ module HoldfastCheck
   # tried in turn until one breaks `expect` in a way no serial order does.
   FALLBACKS: Array[String]
 
-  # : (Hash[Symbol, untyped]? gate, String point, String at) -> untyped
-  def self.hold: (Hash[Symbol, untyped]? gate, String point, String at) -> untyped
+  # : (gate? gate, String point, String at) -> void
+  def self.hold: (gate? gate, String point, String at) -> void
 
-  # : () -> Hash[Symbol, untyped]?
-  def self.gate: () -> Hash[Symbol, untyped]?
+  # : () -> gate?
+  def self.gate: () -> gate?
 
   # @rbs module-self ActiveRecord::Relation
   module BatchGate : ActiveRecord::Relation
-    # : () -> Array[untyped]
-    def records: () -> Array[untyped]
+    # : () -> Array[ActiveRecord::Base]
+    def records: () -> Array[ActiveRecord::Base]
   end
 
   # @rbs module-self ActiveRecord::Base
@@ -57,8 +67,8 @@ module HoldfastCheck
   module WriteGate
   end
 
-  # : () -> untyped
-  def self.watch_writes: () -> untyped
+  # : () -> void
+  def self.watch_writes: () -> void
 
   # The outside-service fakes: a module that holds a client
   # (`PaymentGateway.client = FakePaymentGateway.new`).
@@ -67,11 +77,11 @@ module HoldfastCheck
 
   # Each order of a race starts from the same outside fakes: each client
   # gets its instance variables back as they were before the first.
-  # : () -> Array[[untyped, Hash[Symbol, String]]]
-  def self.clients: () -> Array[[ untyped, Hash[Symbol, String] ]]
+  # : () -> Array[[Object, Hash[Symbol, String]]]
+  def self.clients: () -> Array[[ Object, Hash[Symbol, String] ]]
 
-  # : (Array[[untyped, Hash[Symbol, String]]] saved) -> Array[[untyped, Hash[Symbol, String]]]
-  def self.restore: (Array[[ untyped, Hash[Symbol, String] ]] saved) -> Array[[ untyped, Hash[Symbol, String] ]]
+  # : (Array[[Object, Hash[Symbol, String]]] saved) -> Array[[Object, Hash[Symbol, String]]]
+  def self.restore: (Array[[ Object, Hash[Symbol, String] ]] saved) -> Array[[ Object, Hash[Symbol, String] ]]
 
   # : () -> Array[Module]
   def self.watch_outside_calls: () -> Array[Module]
@@ -91,8 +101,8 @@ module HoldfastCheck
   end
 
   # rspec-mocks loads when the first example runs, after this file.
-  # : () -> untyped
-  def self.watch_stubs: () -> untyped
+  # : () -> void
+  def self.watch_stubs: () -> void
 
   # : (String point) -> bool?
   def self.method_gate: (String point) -> bool?
@@ -136,8 +146,8 @@ module HoldfastCheck
 
     # The records made so far, newest first, then what each belongs to, so a
     # hold made after a copy gets that copy's book.
-    # : () -> Array[untyped]
-    def linkable: () -> Array[untyped]
+    # : () -> Array[ActiveRecord::Base]
+    def linkable: () -> Array[ActiveRecord::Base]
 
     # : () -> Hash[Symbol, untyped]
     def fresh: () -> Hash[Symbol, untyped]
@@ -184,8 +194,8 @@ module HoldfastCheck
     # : (Scope from, World world) -> Array[Symbol]
     def take_ivars: (Scope from, World world) -> Array[Symbol]
 
-    # : (untyped owner, untyped verb) -> Array[untyped]
-    def calls: (untyped owner, untyped verb) -> Array[untyped]
+    # : (Module owner, String | Symbol verb) -> Array[Array[untyped]]
+    def calls: (Module owner, String | Symbol verb) -> Array[Array[untyped]]
 
     # : (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
     def method_missing: (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
@@ -197,18 +207,18 @@ module HoldfastCheck
   # Every call to one method of an outside service's client (`PaymentGateway`
   # and `PaymentGateway.client` both name it), counted from the action on.
   class Calls
-    @specs: Array[[ untyped, untyped ]]
+    @specs: Array[call_spec]
 
-    @seen: Hash[[ String?, Symbol ], Array[untyped]]
+    @seen: Hash[[ String?, Symbol ], Array[Array[untyped]]]
 
-    # : (Array[[untyped, untyped]] specs) -> void
-    def initialize: (Array[[ untyped, untyped ]] specs) -> void
+    # : (Array[call_spec] specs) -> void
+    def initialize: (Array[call_spec] specs) -> void
 
-    # : () -> Array[[untyped, untyped]]
-    def watch: () -> Array[[ untyped, untyped ]]
+    # : () -> Array[call_spec]
+    def watch: () -> Array[call_spec]
 
-    # : (untyped owner, untyped verb) -> Array[untyped]
-    def of: (untyped owner, untyped verb) -> Array[untyped]
+    # : (Module owner, String | Symbol verb) -> Array[Array[untyped]]
+    def of: (Module owner, String | Symbol verb) -> Array[Array[untyped]]
   end
 
   # An action or an expectation line, as the suspicion wrote it. +parts+ are
@@ -253,23 +263,23 @@ module HoldfastCheck
   # action or two (a race at +pause+), +expects+ must all hold afterwards.
   # +calls+ lists the outside-service methods `expect` counts. +shared+ is
   # the example's binding, which holds the locals `do` sets and `expect` reads.
-  # : (String id, given: given_block, acts: Array[Act], expects: Array[Expect], ?calls: Array[[untyped, untyped]], ?pause: String?, ?errors: bool, ?shared: Binding?) -> void
-  def holdfast_suspicion: (String id, given: given_block, acts: Array[Act], expects: Array[Expect], ?calls: Array[[ untyped, untyped ]], ?pause: String?, ?errors: bool, ?shared: Binding?) -> void
+  # : (String id, given: given_block, acts: Array[Act], expects: Array[Expect], ?calls: Array[call_spec], ?pause: String?, ?errors: bool, ?shared: Binding?) -> void
+  def holdfast_suspicion: (String id, given: given_block, acts: Array[Act], expects: Array[Expect], ?calls: Array[call_spec], ?pause: String?, ?errors: bool, ?shared: Binding?) -> void
 
   # The error's first line and the line of the kept spec it came from, so a
   # row never reads ": ".
   # : (Exception error) -> String
   def self.first_lines: (Exception error) -> String
 
-  # : (given_block given, Array[Act] acts, Array[Expect] expects, Array[[untyped, untyped]] calls, String? pause, Binding? shared) -> Hash[String, untyped]
-  def holdfast_race: (given_block given, Array[Act] acts, Array[Expect] expects, Array[[ untyped, untyped ]] calls, String? pause, Binding? shared) -> Hash[String, untyped]
+  # : (given_block given, Array[Act] acts, Array[Expect] expects, Array[call_spec] calls, String? pause, Binding? shared) -> Hash[String, untyped]
+  def holdfast_race: (given_block given, Array[Act] acts, Array[Expect] expects, Array[call_spec] calls, String? pause, Binding? shared) -> Hash[String, untyped]
 
-  # : (given_block given, Array[Act] acts, Array[Integer] positions, Array[Expect] expects, Array[[untyped, untyped]] call_specs, pause: String?, errors: bool, ?trace: bool, ?shared: Binding?) -> Hash[String, untyped]
-  def holdfast_once: (given_block given, Array[Act] acts, Array[Integer] positions, Array[Expect] expects, Array[[ untyped, untyped ]] call_specs, pause: String?, errors: bool, ?trace: bool, ?shared: Binding?) -> Hash[String, untyped]
+  # : (given_block given, Array[Act] acts, Array[Integer] positions, Array[Expect] expects, Array[call_spec] call_specs, pause: String?, errors: bool, ?trace: bool, ?shared: Binding?) -> Hash[String, untyped]
+  def holdfast_once: (given_block given, Array[Act] acts, Array[Integer] positions, Array[Expect] expects, Array[call_spec] call_specs, pause: String?, errors: bool, ?trace: bool, ?shared: Binding?) -> Hash[String, untyped]
 
   # Ruby expectations that name `calls(X, :verb)` count those calls too.
-  # : (Array[Expect] expects) -> Array[[untyped, String]]
-  def self.counted: (Array[Expect] expects) -> Array[[ untyped, String ]]
+  # : (Array[Expect] expects) -> Array[call_spec]
+  def self.counted: (Array[Expect] expects) -> Array[call_spec]
 
   # A compound expectation that fails names each operand that failed and
   # what it saw, instead of the whole line.
@@ -283,8 +293,8 @@ module HoldfastCheck
 
   # The app methods an action called, in order, so a race whose pause point
   # nobody reached can name where to pause instead.
-  # : (Array[String]? called) { () -> Hash[Symbol, untyped] } -> Hash[Symbol, untyped]
-  def holdfast_traced: (Array[String]? called) { () -> Hash[Symbol, untyped] } -> Hash[Symbol, untyped]
+  # : (Array[String]? called) { () -> outcome } -> outcome
+  def holdfast_traced: (Array[String]? called) { () -> outcome } -> outcome
 
   # A request that matched no route, or that the app turned away before it
   # reached any code (401, 403), checked nothing the suspicion is about,
@@ -306,8 +316,8 @@ module HoldfastCheck
   # means the action never ran as written. In a race, or when `expect`
   # names `error` or `raises`, every error is how the action ended, except
   # a name the tree does not have: that tree cannot run the suspicion.
-  # : (Hash[Symbol, untyped] records, Act act, errors: bool) -> Hash[Symbol, untyped]
-  def holdfast_step: (Hash[Symbol, untyped] records, Act act, errors: bool) -> Hash[Symbol, untyped]
+  # : (Hash[Symbol, untyped] records, Act act, errors: bool) -> outcome
+  def holdfast_step: (Hash[Symbol, untyped] records, Act act, errors: bool) -> outcome
 
   # A `do` of several lines is one item of the Markdown list it is shown in.
   # : (String text) -> String
@@ -321,14 +331,14 @@ module HoldfastCheck
   # The first action runs on its own thread until it reaches the pause point;
   # the second runs to its end (or until it waits on a lock the first holds);
   # then the first goes on.
-  # : (World world, Array[Act] acts, String point) -> Array[Hash[Symbol, untyped]]
-  def holdfast_interleave: (World world, Array[Act] acts, String point) -> Array[Hash[Symbol, untyped]]
+  # : (World world, Array[Act] acts, String point) -> Array[outcome]
+  def holdfast_interleave: (World world, Array[Act] acts, String point) -> Array[outcome]
 
   # Whether the second action is still running after a second, or (on
   # PostgreSQL) sooner, as soon as its connection waits on a lock the held
   # action has: a fixed wait cost a second per held order.
-  # : (Thread thread, untyped pid, ?limit: Float) -> bool
-  def self.blocked?: (Thread thread, untyped pid, ?limit: Float) -> bool
+  # : (Thread thread, Integer? pid, ?limit: Float) -> bool
+  def self.blocked?: (Thread thread, Integer? pid, ?limit: Float) -> bool
 
   # A race is confirmed when an interleaved order breaks `expect` and ends in
   # a way neither serial order ends: what each action did and what `expect`
@@ -353,8 +363,8 @@ module HoldfastCheck
 
   # SQLite has no TRUNCATE; DELETE with the foreign keys off empties the
   # tables in any order, and sqlite_sequence holds the ids to restart.
-  # : () -> untyped
-  def holdfast_truncate: () -> untyped
+  # : () -> void
+  def holdfast_truncate: () -> void
 
   # : (Hash[String, untyped] report) -> Integer?
   def holdfast_write: (Hash[String, untyped] report) -> Integer?
