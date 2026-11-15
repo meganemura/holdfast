@@ -14,6 +14,7 @@
 - `holdfast run` and `holdfast check` work on an app or a gem in a folder of its repository (`ruby/` of a monorepo). Before, every row was unchecked: the tests named their files from the folder and the change named them from the repository's root, so no row counted what a test reached, and pins and checks ran from the root, where the app's Gemfile is not.
 - A Minitest suite whose test files leave `require "minitest/autorun"` to a runner such as `bin/test` boots and runs: holdfast loads minitest/autorun when it runs a test file. Before, project setup failed.
 - `holdfast run` compares a change on SQLite. Each side opens a database file of its own under its checkout; before, jitcatch refused the run because DATABASE_URL named one absolute SQLite file.
+- `holdfast run` checks only methods under `app/` and `lib/`, the files a test's reach counts. A changed method elsewhere, such as a fixture or a script, got a row that could never be anything but unchecked; a note now names it.
 - A test that calls a one-line method (`def label = status.upcase`) counts as reaching it. Ruby's line coverage counts no call to such a method, so the row said the test did not reach the changed lines.
 
 ## [0.2.0] - 2026-11-14

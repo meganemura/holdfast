@@ -100,17 +100,23 @@ class SqliteTest < Minitest::Test
       File.write(model, File.read(model).sub(/^end/, "\n  def label = status.upcase\nend"))
       spec = File.join(app, "spec", "models", "appointment_spec.rb")
       File.write(spec, File.read(spec).sub(/^end/, %(  it("labels its status") { expect(build(:appointment, status: "booked").label).to be_a(String) }\nend)))
+      tidy = File.join(app, "script", "tidy.rb")
+      FileUtils.mkdir_p(File.dirname(tidy))
+      File.write(tidy, "module Tidy\n  def self.run = 1\nend\n")
       git = ->(*args) { Open3.capture2e("git", "-c", "user.name=t", "-c", "user.email=t@example.test", *args, chdir: dir) }
       git.("init", "-q", "-b", "main")
       git.("add", "-A")
       git.("commit", "-qm", "clinic")
       File.write(model, File.read(model).sub("status.upcase", "status.capitalize"))
+      File.write(tidy, File.read(tidy).sub("= 1", "= 2"))
 
       out, = holdfast(app, "run", "--budget", "30")
       rows = File.readlines(File.join(app, ".holdfast", "verdicts.jsonl")).map { JSON.parse(_1) }
       label = rows.find { _1["target"] == "Appointment#label" }
       assert label, out
       assert_equal "unintended_change", label["kind"], out
+      refute(rows.any? { _1["target"] == "Tidy.run" }, out)
+      assert_includes out, "outside app/ and lib/, not checked: Tidy.run"
     end
   end
 

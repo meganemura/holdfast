@@ -54,6 +54,9 @@ module Holdfast
         methods = brief["methods"]
         methods = methods.select { |m| change.named.any? { named_match?(_1, m) } } unless change.changed?
         methods = methods.reject { _1["file"].start_with?("db/") || accessor_only?(_1) }
+        # A test's reach counts app/ and lib/ only, so a method elsewhere (a
+        # fixture, a script) could never be checked.
+        outside, methods = methods.partition { !_1["file"].start_with?("app/", "lib/") }
         removed, kept = methods.partition { _1["change"] == "removed" }
         targets = kept.map do |m|
           Target.new(name: m["name"], kind: "method", file: m["file"], line: m["start_line"],
@@ -75,6 +78,7 @@ module Holdfast
         targets += readers(brief, test_files(change, record)) if change.changed?
         warnings = change.changed? ? brief["warnings"].map { "jitcatch warning: #{_1}" } : [] #: Array[String]
         notes = removed.map { "removed: #{_1["name"]}" } + warnings
+        notes << "outside app/ and lib/, not checked: #{outside.first(5).map { _1["name"] }.join(", ")}#{" and #{outside.size - 5} more" if outside.size > 5}" if outside.any?
         notes << "tests chosen by #{brief["existing_tests_via"]}" unless change.changed?
         notes << "tests chosen by #{brief["existing_tests_via"]}#{" (#{record.coverage})" if record.coverage}; a row counts a test only when it reached the changed lines in this run" if change.changed?
         Result.new(targets:, verdicts:, notes:)
