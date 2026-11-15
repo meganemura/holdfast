@@ -73,18 +73,19 @@ module Holdfast
       def self.observe_side(change, record, env, side, rev, areas, work)
         tree = File.join(Dir.mktmpdir("holdfast-observe"), "tree")
         Change.git(change.root, "worktree", "add", "--quiet", "--detach", tree, rev)
+        app = File.join(tree, change.prefix)
         number = Record::SIDES.fetch(side)
-        side_env = env.merge(record.env_for(side)).merge("BUNDLE_GEMFILE" => env.fetch("BUNDLE_GEMFILE", File.join(tree, "Gemfile")))
+        side_env = env.merge(record.env_for(side)).merge("BUNDLE_GEMFILE" => env.fetch("BUNDLE_GEMFILE", File.join(app, "Gemfile")))
         log = File.join(work, "#{side}.log")
         if (setup = record.side_setup)
-          out, status = Open3.capture2e(side_env, "/bin/sh", "-c", setup, chdir: tree)
+          out, status = Open3.capture2e(side_env, "/bin/sh", "-c", setup, chdir: app)
           File.write(log, out)
           return { error: "database setup failed", log: } unless status.success?
         end
         lines = [] #: Array[json]
         areas.each do |area|
           out_file = File.join(work, "#{side}-#{File.basename(area, ".rb")}.jsonl")
-          out, = Open3.capture2e(side_env.merge("SEQ_OBSERVE" => out_file, "TEST_ENV_NUMBER" => number), "bundle", "exec", "rspec", area, chdir: tree)
+          out, = Open3.capture2e(side_env.merge("SEQ_OBSERVE" => out_file, "TEST_ENV_NUMBER" => number), "bundle", "exec", "rspec", area, chdir: app)
           File.write(log, out, mode: "a")
           lines += File.readlines(out_file).map { JSON.parse(_1) } if File.file?(out_file)
         end

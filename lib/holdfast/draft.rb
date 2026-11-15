@@ -365,7 +365,7 @@ end
       return "" unless path
 
       @files ||= {} #: Hash[String, String]
-      @files[path] ||= (Open3.capture2("git", "show", "#{@rev}:#{path}", chdir: @change.root).then { |out, st| st.success? ? out : "" })
+      @files[path] ||= (Open3.capture2("git", "show", Change.blob(@rev, path), chdir: @change.root).then { |out, st| st.success? ? out : "" })
     end
   end
 end

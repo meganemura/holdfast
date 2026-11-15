@@ -79,7 +79,7 @@ module Holdfast
       why = through == v.method["name"] ? "calls #{via}" : "calls #{through}, which calls #{via}"
       reads = { "via" => v.method["name"], "constant" => v.constant, "model" => v.model, "column" => v.column,
                 "values" => v.values, "outside" => v.outside }.compact
-      Target.new(name:, kind: "method", file: node.file, line: node.start_line, why: ["caller", why],
+      Target.new(name:, kind: "method", file: change.local(node.file), line: node.start_line, why: ["caller", why],
                  tests: tests_for(change, node), source: node.source, reader: nil, reads:,
                  span: { "old_start" => old&.start_line, "old_end" => old&.end_line, "new_start" => node.start_line, "new_end" => node.end_line })
     end
@@ -114,7 +114,7 @@ module Holdfast
     # a draw also holds a value neither side's list holds.
     #: (Change change, String file) -> Array[String]
     def self.other_strings(change, file)
-      text = Open3.capture2("git", "show", "#{change.head}:#{file}", chdir: change.root).first
+      text = Open3.capture2("git", "show", Change.blob(change.head, file), chdir: change.root).first
       lists = text.scan(/^\s*[A-Z][A-Z0-9_]*\s*=\s*(%w\[[^\]]*\]|\[[^\]]*\])/) #: Array[[String]]
       lists.flat_map { strings(_1.first) }.uniq
     end

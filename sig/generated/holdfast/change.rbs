@@ -42,6 +42,21 @@ module Holdfast
     # : (String root, *String args, ?env: Hash[String, String]) -> String
     def self.git: (String root, *String args, ?env: Hash[String, String]) -> String
 
+    # An app can sit in a folder of its repository. git and jitcatch name a
+    # file from the repository's root, and holdfast names it from the app's.
+    PREFIXES: Hash[String, String]
+
+    # : () -> String
+    def prefix: () -> String
+
+    # : (String path) -> String
+    def local: (String path) -> String
+
+    # `rev:path` names a path from the repository's root, `rev:./path` from
+    # the app's.
+    # : (String rev, String path) -> String
+    def self.blob: (String rev, String path) -> String
+
     # : () -> bool
     def changed?: () -> bool
 

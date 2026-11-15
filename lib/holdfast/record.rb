@@ -35,7 +35,7 @@ module Holdfast
         end
       end
       if steps.all? { _1["ok"] } && (probe = smallest_test(root, facts["framework"]))
-        cmd = facts["framework"] == "rspec" ? "#{facts["bundle"]}rspec #{probe}" : "#{facts["bundle"]}ruby -Itest #{probe}"
+        cmd = facts["framework"] == "rspec" ? "#{facts["bundle"]}rspec #{probe}" : "#{facts["bundle"]}ruby -Itest -rminitest/autorun #{probe}"
         steps << run_step(root, "boot one test", cmd, side_env(facts, SIDES["base"]))
       end
       failed = steps.find { !_1["ok"] }

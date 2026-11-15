@@ -64,6 +64,18 @@ module Holdfast
       out.strip
     end
 
+    # An app can sit in a folder of its repository. git and jitcatch name a
+    # file from the repository's root, and holdfast names it from the app's.
+    PREFIXES = {} #: Hash[String, String]
+    #: () -> String
+    def prefix = PREFIXES[root] ||= Change.git(root, "rev-parse", "--show-prefix")
+    #: (String path) -> String
+    def local(path) = path.delete_prefix(prefix)
+    # `rev:path` names a path from the repository's root, `rev:./path` from
+    # the app's.
+    #: (String rev, String path) -> String
+    def self.blob(rev, path) = "#{rev}:./#{path}"
+
     #: () -> bool
     def changed? = mode == "change"
     #: (String) -> String

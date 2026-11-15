@@ -10,6 +10,9 @@ HOLDFAST_DREW: Array[String]
 # is the union of every take.
 HOLDFAST_ROOT: String
 
+# `ruby file` keeps the file in $0, not in ARGV, as Minitest runs.
+HOLDFAST_SCRIPT: String
+
 HOLDFAST_TOTAL: Hash[String, Hash[String, Array[Integer | String]]]
 
 # One test file holds examples that agree and examples the change added, so
@@ -30,6 +33,16 @@ module HoldfastMinitestTest : Minitest::Test
   def run: (*untyped) -> untyped
 end
 
+# The record is written once the tests ran. Minitest runs them from its
+# own at_exit, which `-rminitest/autorun` can register before this file
+# loads, so this at_exit can come first; under autorun the record is
+# written by Minitest.after_run, once.
+HOLDFAST_WRITTEN: Array[bool]
+
 class Object
   private def holdfast_take: () -> Hash[String, Hash[String, Array[Integer | String]]]
+end
+
+class Object
+  private def holdfast_write_reach: () -> void
 end

@@ -11,6 +11,10 @@
 - The hunt no longer fails to draft its areas when a controller calls `permit` with no arguments (`params.require(:appointment).permit`).
 - The hunt no longer fails to draft its areas when a controller finds a record by a key held in a local (`find_by(column => params[:token])`): that key names no column, so the draft sends the record's id.
 - The hunt no longer fails to draft its areas when a controller or an endpoint splats a hash into `find_by` or `params.expect` (`find_by(**search)`); the splat names no column.
+- `holdfast run` and `holdfast check` work on an app or a gem in a folder of its repository (`ruby/` of a monorepo). Before, every row was unchecked: the tests named their files from the folder and the change named them from the repository's root, so no row counted what a test reached, and pins and checks ran from the root, where the app's Gemfile is not.
+- A Minitest suite whose test files leave `require "minitest/autorun"` to a runner such as `bin/test` boots and runs: holdfast loads minitest/autorun when it runs a test file. Before, project setup failed.
+- `holdfast run` compares a change on SQLite. Each side opens a database file of its own under its checkout; before, jitcatch refused the run because DATABASE_URL named one absolute SQLite file.
+- A test that calls a one-line method (`def label = status.upcase`) counts as reaching it. Ruby's line coverage counts no call to such a method, so the row said the test did not reach the changed lines.
 
 ## [0.2.0] - 2026-11-14
 

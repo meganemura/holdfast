@@ -42,7 +42,7 @@ module Holdfast
     def self.constants(change)
       @constants ||= {} #: Hash[[String, String], Hash[String, json]]
       @constants[[change.base, change.head]] ||= begin
-        files = Change.git(change.root, "diff", "--name-only", change.base, change.head, "--", "app", "lib").lines.map(&:strip).select { _1.end_with?(".rb") }
+        files = Change.git(change.root, "diff", "--relative", "--name-only", change.base, change.head, "--", "app", "lib").lines.map(&:strip).select { _1.end_with?(".rb") }
         table = {} #: Hash[String, json]
         files.each_with_object(table) do |file, out|
           old = members(show(change, change.base, file))
@@ -57,7 +57,7 @@ module Holdfast
 
     #: (Change change, String rev, String file) -> String
     def self.show(change, rev, file)
-      out, status = Open3.capture2("git", "show", "#{rev}:#{file}", chdir: change.root, err: File::NULL)
+      out, status = Open3.capture2("git", "show", Change.blob(rev, file), chdir: change.root, err: File::NULL)
       status.success? ? out : ""
     end
 

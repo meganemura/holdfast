@@ -93,7 +93,7 @@ module Holdfast
       return "no change: checks run on the current tree only (#{change.tree_label}); app, lib, config, db and the Gemfile match #{base}" unless change.changed?
       return "--here: checks run on the current tree only (#{change.tree_label}); the change against #{base} is not compared" if here
 
-      files = Change.git(change.root, "diff", "--name-only", change.base, change.head, "--", *Holdfast::CODE).lines.map(&:strip)
+      files = Change.git(change.root, "diff", "--relative", "--name-only", change.base, change.head, "--", *Holdfast::CODE).lines.map(&:strip)
       "change: each runs on base #{base} and on the working tree (#{change.tree_label}); #{files.size} file(s) differ: #{files.first(5).join(", ")}#{" and #{files.size - 5} more" if files.size > 5}"
     end
 
@@ -419,9 +419,11 @@ module Holdfast
       FileUtils.rm_rf(out) if out.include?("/.holdfast/check/")
       FileUtils.mkdir_p(out)
       tree = root
+      worktree = nil #: String?
       if rev
-        tree = File.join(Dir.mktmpdir("holdfast-check"), "tree")
-        Change.git(root, "worktree", "add", "--quiet", "--detach", tree, rev)
+        worktree = File.join(Dir.mktmpdir("holdfast-check"), "tree")
+        Change.git(root, "worktree", "add", "--quiet", "--detach", worktree, rev)
+        tree = File.join(worktree, Change.git(root, "rev-parse", "--show-prefix"))
         # Both sides build the world with the same factories and helpers:
         # test support is not the behavior under comparison.
         SUPPORT.each do |part|
@@ -452,9 +454,9 @@ module Holdfast
       { "rev" => rev, "out" => out, "reports" => reports, "examples" => examples, "log" => o,
         "seconds" => (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).round(1) }
     ensure
-      if rev && tree && tree != root && tree.start_with?(Dir.tmpdir)
-        system("git", "worktree", "remove", "--force", tree, chdir: root, out: File::NULL, err: File::NULL)
-        FileUtils.rm_rf(File.dirname(tree))
+      if worktree&.start_with?(Dir.tmpdir)
+        system("git", "worktree", "remove", "--force", worktree, chdir: root, out: File::NULL, err: File::NULL)
+        FileUtils.rm_rf(File.dirname(worktree))
       end
     end
 

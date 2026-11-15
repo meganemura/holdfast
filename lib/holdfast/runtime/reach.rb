@@ -10,7 +10,8 @@ require "json"
 # eval: true also counts code compiled from a file name, which is how
 # ActionView runs a template. Branches tell whether the body of a
 # `return x if y` ran, which line counts cannot.
-Coverage.start(lines: true, branches: true, eval: true) unless Coverage.running?
+# A call to a one-line `def x = y` adds no line count, only a method count.
+Coverage.start(lines: true, branches: true, methods: true, eval: true) unless Coverage.running?
 
 # Which of the values the change added or removed (HOLDFAST_VALUES, a JSON
 # list) an input drew: a row written with that value. Reads do not count: a
@@ -42,6 +43,8 @@ end
 # for the app's own files. Each take clears the counts, so the file's total
 # is the union of every take.
 HOLDFAST_ROOT = "#{Dir.pwd}/" #: String
+# `ruby file` keeps the file in $0, not in ARGV, as Minitest runs.
+HOLDFAST_SCRIPT = $0 #: String
 HOLDFAST_TOTAL = { "hits" => Hash.new { |h, k| h[k] = [] }, "arms" => Hash.new { |h, k| h[k] = [] } } #: Hash[String, Hash[String, Array[Integer | String]]]
 # @rbs!
 #   class Object
@@ -58,6 +61,8 @@ def holdfast_take
 
     lines = counts.is_a?(Hash) ? counts[:lines] : counts
     ran = Array(lines).each_with_index.filter_map { |count, i| i + 1 if count.to_i.positive? }
+    methods = counts.is_a?(Hash) && counts[:methods] || {}
+    ran |= methods.filter_map { |(_, _, first, _, last, _), n| first if first == last && n.positive? }
     taken = (counts.is_a?(Hash) && counts[:branches] || {}).values.flat_map { |a| a.filter_map { |(_, _, line, column, last, last_column), n| "#{line}:#{column}-#{last}:#{last_column}" if n.positive? } }
     hits[relative] = ran unless ran.empty?
     arms[relative] = taken unless taken.empty?
@@ -99,18 +104,35 @@ holdfast_hook = TracePoint.new(:end) do |tp|
     tp.disable
   elsif defined?(Minitest::Test) && !Minitest::Test.include?(HoldfastMinitestTest)
     Minitest::Test.prepend(HoldfastMinitestTest)
+    Minitest.after_run { holdfast_write_reach } if Minitest.respond_to?(:after_run)
     tp.disable
   end
 end
 holdfast_hook.enable
 
-at_exit do
+# The record is written once the tests ran. Minitest runs them from its
+# own at_exit, which `-rminitest/autorun` can register before this file
+# loads, so this at_exit can come first; under autorun the record is
+# written by Minitest.after_run, once.
+HOLDFAST_WRITTEN = [] #: Array[bool]
+# @rbs!
+#   class Object
+#     private def holdfast_write_reach: () -> void
+#   end
+def holdfast_write_reach
   dir = ENV["HOLDFAST_REACH_DIR"]
-  test = ARGV.reverse.find { _1.include?(".jitcatch/") }
-  next unless dir && test
+  test = [HOLDFAST_SCRIPT, *ARGV].reverse.find { _1.include?(".jitcatch/") }
+  return unless dir && test && HOLDFAST_WRITTEN.empty?
+
+  HOLDFAST_WRITTEN << true
 
   holdfast_take
   record = { "side" => ENV["TEST_ENV_NUMBER"], "test" => test.sub(%r{\A.*?\.jitcatch/}, ""), "hits" => HOLDFAST_TOTAL["hits"],
              "drew" => HOLDFAST_DREW, "arms" => HOLDFAST_TOTAL["arms"], "examples" => HOLDFAST_EXAMPLES.compact }
   File.write(File.join(dir, "reach-#{ENV["TEST_ENV_NUMBER"]}-#{Process.pid}.json"), JSON.generate(record))
+end
+
+at_exit do
+  autorun = defined?(Minitest) && Minitest.class_variable_defined?(:@@installed_at_exit) && Minitest.class_variable_get(:@@installed_at_exit)
+  holdfast_write_reach unless autorun
 end

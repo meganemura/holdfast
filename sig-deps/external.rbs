@@ -145,6 +145,7 @@ module RSpec
 end
 
 module Minitest
+  def self.after_run: () { () -> void } -> untyped
   class Test
     def self.prepend: (*Module) -> untyped
     def self.include?: (Module) -> bool

@@ -125,6 +125,7 @@ module Holdfast
       def self.explore(change, record, rev, jobs)
         tree = File.join(Dir.mktmpdir("holdfast-pin"), "tree")
         Change.git(change.root, "worktree", "add", "--quiet", "--detach", tree, rev)
+        app = File.join(tree, change.prefix)
         planned = jobs.map do |target, inputs, origin, entries|
           run_dir = File.join(Holdfast.dir(change.root), "runs", Holdfast.slug(target.name))
           FileUtils.rm_rf(run_dir) if run_dir.include?("/.holdfast/runs/")
@@ -133,13 +134,13 @@ module Holdfast
           plan = [target, inputs, origin, entries, run_dir] #: planned
           plan
         end
-        File.write(File.join(tree, "holdfast_fill_spec.rb"), spec_source(record, planned))
-        env = record.env_for("pin").merge("BUNDLE_GEMFILE" => File.join(tree, "Gemfile"))
+        File.write(File.join(app, "holdfast_fill_spec.rb"), spec_source(record, planned))
+        env = record.env_for("pin").merge("BUNDLE_GEMFILE" => File.join(app, "Gemfile"))
         steps = [record.side_setup, "#{record.bundle}rspec holdfast_fill_spec.rb"].compact
         failure = nil #: String?
         steps.each do |command|
           step_env = command == record.side_setup ? env : env.merge("RUBYOPT" => "-I#{Tools.branchout_lib} -rbundler/setup -rbranchout/coverage")
-          out, status = Open3.capture2e(step_env, "/bin/sh", "-c", command, chdir: tree)
+          out, status = Open3.capture2e(step_env, "/bin/sh", "-c", command, chdir: app)
           next if status.success? || command != steps.first && planned.all? { File.file?(File.join(_1[4], "observed.json")) }
 
           failure = "pinning at #{change.short(rev)} failed: `#{command}`: #{failure_line(out)}"

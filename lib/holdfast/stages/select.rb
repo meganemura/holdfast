@@ -50,7 +50,7 @@ module Holdfast
       #: (Change, Record) -> Result
       def self.run(change, record)
         jc = jitcatch(change, record)
-        brief = jc.build
+        brief = localize(jc.build, change)
         methods = brief["methods"]
         methods = methods.select { |m| change.named.any? { named_match?(_1, m) } } unless change.changed?
         methods = methods.reject { _1["file"].start_with?("db/") || accessor_only?(_1) }
@@ -85,6 +85,20 @@ module Holdfast
         base = change.changed? ? change.base : empty_parent(change)
         JitCatch::Changes.new(JitCatch::GitRepo.new(change.root), base, change.head, readers: change.changed?,
                               coverage: record.coverage&.then { File.join(change.root, _1) })
+      end
+
+      # The brief names files from the repository's root; the rest of the
+      # run names them from the app's.
+      #: (json brief, Change change) -> json
+      def self.localize(brief, change)
+        return brief if change.prefix.empty?
+
+        brief["methods"].each do |m|
+          m["file"] = change.local(m["file"])
+          (m["existing_tests"] + m["entry_point_tests"]).each { _1["file"] = change.local(_1["file"]) }
+        end
+        Array(brief.dig("readers", "rows")).each { _1["file"] = change.local(_1["file"]) }
+        brief
       end
 
       # Reading from the first commit's parent makes every method "added", so

@@ -68,7 +68,7 @@ module Holdfast
     end
 
     #: (Change) -> Array[String]
-    def self.changed_files(change) = Change.git(change.root, "diff", "--name-only", change.base, change.head, "--", "app").lines.map(&:strip)
+    def self.changed_files(change) = Change.git(change.root, "diff", "--relative", "--name-only", change.base, change.head, "--", "app").lines.map(&:strip)
 
     #: [T] (Hash[String, Float] timings, String name) { () -> T } -> T
     def self.timed(timings, name)

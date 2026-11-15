@@ -89,6 +89,31 @@ class SqliteTest < Minitest::Test
     end
   end
 
+  # An app below the repository root runs its tests there, while the
+  # change names its files from the root, so no row counted what a test
+  # reached and every row was unchecked.
+  def test_an_app_in_a_folder_of_its_repository_counts_what_its_tests_reach
+    Dir.mktmpdir("holdfast-sqlite") do |dir|
+      app = sqlite_clinic(dir)
+      FileUtils.rm_rf(File.join(app, ".git"))
+      model = File.join(app, "app", "models", "appointment.rb")
+      File.write(model, File.read(model).sub(/^end/, "\n  def label = status.upcase\nend"))
+      spec = File.join(app, "spec", "models", "appointment_spec.rb")
+      File.write(spec, File.read(spec).sub(/^end/, %(  it("labels its status") { expect(build(:appointment, status: "booked").label).to be_a(String) }\nend)))
+      git = ->(*args) { Open3.capture2e("git", "-c", "user.name=t", "-c", "user.email=t@example.test", *args, chdir: dir) }
+      git.("init", "-q", "-b", "main")
+      git.("add", "-A")
+      git.("commit", "-qm", "clinic")
+      File.write(model, File.read(model).sub("status.upcase", "status.capitalize"))
+
+      out, = holdfast(app, "run", "--budget", "30")
+      rows = File.readlines(File.join(app, ".holdfast", "verdicts.jsonl")).map { JSON.parse(_1) }
+      label = rows.find { _1["target"] == "Appointment#label" }
+      assert label, out
+      assert_equal "unintended_change", label["kind"], out
+    end
+  end
+
   # `do` saw no calls list, so `calls(X, :verb)` there raised on nil and
   # the suspicion could not run.
   def test_a_do_reads_the_calls_of_its_own_action

@@ -55,7 +55,7 @@ module Holdfast
       # file => { "base" => [lines], "head" => [lines] } from the diff hunks.
       #: (Change) -> changed_lines
       def self.changed_lines(change)
-        diff = Change.git(change.root, "diff", "--unified=0", change.base, change.head, "--", "app", "lib")
+        diff = Change.git(change.root, "diff", "--relative", "--unified=0", change.base, change.head, "--", "app", "lib")
         out = Hash.new do |h, k|
           sides = { "base" => [], "head" => [] } #: Hash[String, Array[Integer]]
           h[k] = sides

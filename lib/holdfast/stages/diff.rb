@@ -111,7 +111,7 @@ module Holdfast
       #: (Change change, Record record, Array[Target] targets, Array[Fill::Pins] pins, String work) -> Array[Source]
       def self.gather(change, record, targets, pins, work)
         all = File.join(work, "all")
-        edited = Change.git(change.root, "diff", "--name-only", "--diff-filter=AM", change.base, change.head, "--", "spec", "test")
+        edited = Change.git(change.root, "diff", "--relative", "--name-only", "--diff-filter=AM", change.base, change.head, "--", "spec", "test")
                        .lines.map(&:strip).select { _1.end_with?(record.test_suffix) }
         by_test = Hash.new { |h, k| h[k] = [] } #: Hash[String, Array[String]]
         targets.each { |t| t.tests.select { _1.end_with?(record.test_suffix) }.each { by_test[_1] << t.name } }
@@ -139,7 +139,7 @@ module Holdfast
 
       #: (Change change, String rev, String file) -> String?
       def self.show(change, rev, file)
-        out, status = Open3.capture2("git", "show", "#{rev}:#{file}", chdir: change.root)
+        out, status = Open3.capture2("git", "show", Change.blob(rev, file), chdir: change.root)
         status.success? ? out : nil
       end
 
@@ -166,9 +166,12 @@ module Holdfast
         ENV["HOLDFAST_VALUES"] = JSON.generate(values)
         ENV["RUBYOPT"] = "-r#{File.join(RUNTIME, "reach.rb")}"
         ENV["HOLDFAST_REACH_DIR"] = reach_dir
-        ENV["DATABASE_URL"] = record.database_url if record.database_url
+        # jitcatch numbers a server's database per side; an SQLite file is
+        # split by naming it relative to each side's checkout instead.
+        sqlite = record.database_url.to_s.start_with?("sqlite3:")
+        ENV["DATABASE_URL"] = sqlite ? "sqlite3:#{Holdfast.dir(".")}/db/diff" : record.database_url if record.database_url
         doc = JitCatch::Assessor.apply(JitCatch::Runner.run(change.root, change.base, change.head, dir, env: env_names.uniq,
-                                                            setup: record.side_setup, timeout: 60, number_database_url: !record.database_url.nil?))
+                                                            setup: record.side_setup, timeout: 60, number_database_url: !record.database_url.nil? && !sqlite))
         by_path = chunk.to_h { [_1.path, _1] }
         starts = doc["tests"].group_by { _1["file"] }.transform_values { |ts| ts.filter_map { _1["line"] }.sort }
         outcomes = doc["tests"].map do |test|
