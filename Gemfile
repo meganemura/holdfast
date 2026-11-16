@@ -12,5 +12,6 @@ gem "minitest", "6.0.6"
 # and Steep checks lib/ against them.
 group :types do
   gem "steep", "2.1.0", require: false
+  gem "typegap", "0.1.0", require: false
   gem "rbs-inline", "0.14.0", require: false
 end

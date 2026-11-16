@@ -92,3 +92,7 @@ jobs:
             echo "Steep stopped checking the code on the lines above." >&2
             exit 1
           fi
+      # typegap reports where the types and the code disagree. It prints what it
+      # finds and fails the job only when it cannot run.
+      - name: Report gaps between the types and the code
+        run: bundle exec typegap || [ $? -eq 1 ]
