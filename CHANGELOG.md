@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- `holdfast run` compares base and head in an app that pins a json version other than Ruby's own, such as `json < 3`. Before, the reach recorder loaded Ruby's json ahead of the app's bundle, and both sides failed setup with "You have already activated json".
+- `holdfast run` counts what each test reached in an app that runs SimpleCov. Before, SimpleCov stopped coverage before the recorder wrote, so every row said no test reached the changed lines.
 - Project setup runs the migrations the schema file does not have yet, after `db:schema:load`, and the hunt's databases get them too. Before, an app that commits a migration ahead of its schema file failed setup with `ActiveRecord::PendingMigrationError`. The migration does not rewrite the app's schema file.
 - The gem ships RBS signatures in `sig/generated/`, written by rbs-inline from the type comments in `lib/` and checked with Steep. It leaves out the signatures of the scripts that run inside an app's test process (`runtime/` and `sequences/`).
 - `holdfast run` no longer fails on a changed scope that splats a constant into `where` (`where(**OPEN)`); that scope names no column.

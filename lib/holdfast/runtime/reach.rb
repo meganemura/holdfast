@@ -4,8 +4,10 @@
 # app: it records which lines of the app each test file ran, so a row can say
 # whether a test reached the changed lines or only named the method. It runs
 # with no holdfast code loaded and writes one JSON file per process.
+# It loads json only when it writes, after the app's bundle is set up: a
+# json loaded here would be Ruby's default copy, and an app that pins
+# another version then fails to boot ("already activated json").
 require "coverage"
-require "json"
 
 # eval: true also counts code compiled from a file name, which is how
 # ActionView runs a template. Branches tell whether the body of a
@@ -13,11 +15,11 @@ require "json"
 # A call to a one-line `def x = y` adds no line count, only a method count.
 Coverage.start(lines: true, branches: true, methods: true, eval: true) unless Coverage.running?
 
-# Which of the values the change added or removed (HOLDFAST_VALUES, a JSON
-# list) an input drew: a row written with that value. Reads do not count: a
-# scope that selects by a constant puts every member in each query.
-holdfast_values = JSON.parse(ENV.fetch("HOLDFAST_VALUES", "[]")) rescue [] #: Array[Holdfast::json_value]
-HOLDFAST_WANTED = holdfast_values.map(&:to_s) #: Array[String]
+# Which of the values the change added or removed (HOLDFAST_VALUES, each
+# value's text in base64, comma-separated) an input drew: a row written with
+# that value. Reads do not count: a scope that selects by a constant puts
+# every member in each query.
+HOLDFAST_WANTED = ENV.fetch("HOLDFAST_VALUES", "").split(",").map { _1.unpack1("m0").to_s.force_encoding(Encoding::UTF_8) } #: Array[String]
 HOLDFAST_DREW = [] #: Array[String]
 unless HOLDFAST_WANTED.empty?
   attach = TracePoint.new(:end) do |tp|
@@ -53,6 +55,10 @@ HOLDFAST_TOTAL = { "hits" => Hash.new { |h, k| h[k] = [] }, "arms" => Hash.new {
 def holdfast_take
   hits = {} #: Hash[String, Array[Integer]]
   arms = {} #: Hash[String, Array[String]]
+  # SimpleCov stops coverage from its own at_exit, which runs before this
+  # file's; what each example ran was taken already.
+  return { "hits" => hits, "arms" => arms } unless Coverage.running?
+
   Coverage.result(stop: false, clear: true).each do |path, counts|
     next unless path.start_with?(HOLDFAST_ROOT)
 
@@ -126,6 +132,7 @@ def holdfast_write_reach
 
   HOLDFAST_WRITTEN << true
 
+  require "json"
   holdfast_take
   record = { "side" => ENV["TEST_ENV_NUMBER"], "test" => test.sub(%r{\A.*?\.jitcatch/}, ""), "hits" => HOLDFAST_TOTAL["hits"],
              "drew" => HOLDFAST_DREW, "arms" => HOLDFAST_TOTAL["arms"], "examples" => HOLDFAST_EXAMPLES.compact }

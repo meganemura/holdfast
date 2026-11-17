@@ -1,6 +1,9 @@
 # Generated from lib/holdfast/runtime/reach.rb with RBS::Inline
 
-# : Array[Holdfast::json_value]
+# Which of the values the change added or removed (HOLDFAST_VALUES, each
+# value's text in base64, comma-separated) an input drew: a row written with
+# that value. Reads do not count: a scope that selects by a constant puts
+# every member in each query.
 HOLDFAST_WANTED: Array[String]
 
 HOLDFAST_DREW: Array[String]

@@ -163,7 +163,7 @@ module Holdfast
       def self.compare(change, record, chunk, dir, reach_dir, values = [])
         env_names = record.env_names + %w[RUBYOPT HOLDFAST_REACH_DIR HOLDFAST_VALUES] + (record.database_url ? ["DATABASE_URL"] : [])
         saved = ENV.to_h.slice("RUBYOPT", "HOLDFAST_REACH_DIR", "DATABASE_URL", "HOLDFAST_VALUES")
-        ENV["HOLDFAST_VALUES"] = JSON.generate(values)
+        ENV["HOLDFAST_VALUES"] = values.map { [_1.to_s].pack("m0") }.join(",")
         ENV["RUBYOPT"] = "-r#{File.join(RUNTIME, "reach.rb")}"
         ENV["HOLDFAST_REACH_DIR"] = reach_dir
         # jitcatch numbers a server's database per side; an SQLite file is
