@@ -45,7 +45,10 @@ module Holdfast
       index = File.join(Dir.mktmpdir("holdfast-index"), "index")
       env = { "GIT_INDEX_FILE" => index }
       git(root, "read-tree", "HEAD", env:)
-      git(root, "add", "-A", env:)
+      # `:/` is the whole repository, as a bare `add -A` is, when the app sits in a folder of it.
+      # git refuses a pathspec that names an ignored folder, and an ignored one is never added anyway.
+      _, ignored = Open3.capture2e("git", "check-ignore", "-q", ".holdfast/", chdir: root)
+      git(root, "add", "-A", "--", ":/", *(ignored.success? ? [] : [":!.holdfast"]), env:)
       git(root, "rm", "-r", "--cached", "--quiet", "--ignore-unmatch", ".holdfast", env:)
       tree = git(root, "write-tree", env:)
       # The commit stays private to this run, so it needs no identity from the user and must not fail without one.

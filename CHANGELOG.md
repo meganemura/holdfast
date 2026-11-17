@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- `holdfast run` and `holdfast check` read an uncommitted working tree without adding holdfast's own `.holdfast/` folder. Before, a database file a test dropped while the snapshot was taken (SQLite's `-shm`), or a checkout there, failed the run at `git add`.
 - `holdfast run` compares base and head in an app that pins a json version other than Ruby's own, such as `json < 3`. Before, the reach recorder loaded Ruby's json ahead of the app's bundle, and both sides failed setup with "You have already activated json".
 - `holdfast run` counts what each test reached in an app that runs SimpleCov. Before, SimpleCov stopped coverage before the recorder wrote, so every row said no test reached the changed lines.
 - Project setup runs the migrations the schema file does not have yet, after `db:schema:load`, and the hunt's databases get them too. Before, an app that commits a migration ahead of its schema file failed setup with `ActiveRecord::PendingMigrationError`. The migration does not rewrite the app's schema file.

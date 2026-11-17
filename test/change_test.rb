@@ -34,4 +34,31 @@ class ChangeTest < Minitest::Test
       assert_equal "A = 2\n", shown
     end
   end
+
+  # holdfast's own folder holds databases a running test opens and drops
+  # (SQLite's -shm and -wal files) and checkouts of its own. Adding it
+  # failed when one of them vanished or could not be added, and the
+  # snapshot never needed it.
+  def test_the_snapshot_never_adds_holdfasts_own_folder
+    Dir.mktmpdir do |dir|
+      app = File.join(dir, "app")
+      FileUtils.mkdir_p(File.join(app, "app"))
+      File.write(File.join(app, "app", "a.rb"), "A = 1\n")
+      git = ->(*args) { Open3.capture2e("git", "-c", "user.name=t", "-c", "user.email=t@example.test", *args, chdir: app) }
+      git.("init", "-q", "-b", "main")
+      git.("add", ".")
+      git.("commit", "-q", "-m", "base")
+      File.write(File.join(app, "app", "a.rb"), "A = 2\n")
+      # git refuses to add a repository with no commit, as it refuses a file that vanished.
+      nested = File.join(app, ".holdfast", "runs", "w")
+      FileUtils.mkdir_p(nested)
+      Open3.capture2e("git", "init", "-q", chdir: nested)
+      File.write(File.join(nested, "f"), "")
+
+      change = Holdfast::Change.read(app, base_ref: "HEAD", named: [])
+
+      shown, = Open3.capture2("git", "show", "#{change.head}:app/a.rb", chdir: app)
+      assert_equal "A = 2\n", shown
+    end
+  end
 end
