@@ -11,6 +11,10 @@ module Holdfast
     # jitcatch numbers base 1 and head 2; a pin runs in a checkout of its own.
     SIDES = { "base" => "1", "head" => "2", "pin" => "3" }.freeze #: Hash[String, String]
     COVERAGE = %w[coverage/jitcatch-coverage.json tmp/jitcatch-coverage.json].freeze #: Array[String]
+    # An app may commit a migration before its schema file catches up, as
+    # its own CI runs both. SCHEMA sends the dump that follows a migration
+    # away from the tree, which may be the person's working tree.
+    SIDE_SETUP = "bin/rails db:create db:schema:load && SCHEMA=/dev/null bin/rails db:migrate" #: String
 
     attr_reader :data #: json
 
@@ -63,7 +67,7 @@ module Holdfast
         "database" => { "adapter" => adapter, "server" => server, "numbered" => test_section.include?("TEST_ENV_NUMBER"),
                         "url" => url }.compact,
         "env" => db_yml.scan(/ENV(?:\.fetch\(|\[)\s*["'](\w+)["']/).flatten.uniq - %w[TEST_ENV_NUMBER RAILS_ENV],
-        "side_setup" => url ? "bin/rails db:create db:schema:load" : nil,
+        "side_setup" => url ? SIDE_SETUP : nil,
         "base_branch" => base_branch(root),
         "coverage" => COVERAGE.find { File.file?(File.join(root, _1)) }
       }

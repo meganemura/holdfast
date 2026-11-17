@@ -11,6 +11,11 @@ module Holdfast
 
     COVERAGE: Array[String]
 
+    # An app may commit a migration before its schema file catches up, as
+    # its own CI runs both. SCHEMA sends the dump that follows a migration
+    # away from the tree, which may be the person's working tree.
+    SIDE_SETUP: String
+
     attr_reader data: json
 
     # : (String) -> String

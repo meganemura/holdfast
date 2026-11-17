@@ -69,6 +69,28 @@ class SqliteTest < Minitest::Test
     end
   end
 
+  # An app may commit a migration before its schema file has it, and its own
+  # CI runs db:migrate after db:schema:load. Setup used to stop there on
+  # ActiveRecord::PendingMigrationError.
+  def test_setup_runs_a_migration_the_schema_file_lacks_and_leaves_the_schema_file_alone
+    Dir.mktmpdir("holdfast-sqlite") do |dir|
+      app = sqlite_clinic(dir)
+      FileUtils.mkdir_p(File.join(app, "db", "migrate"))
+      File.write(File.join(app, "db", "migrate", "2_add_note_to_appointments.rb"), <<~RUBY)
+        class AddNoteToAppointments < ActiveRecord::Migration[8.1]
+          def change = add_column(:appointments, :note, :string)
+        end
+      RUBY
+      Open3.capture2e("git", "add", "-A", chdir: app)
+      Open3.capture2e("git", "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-qm", "note", chdir: app)
+      schema = File.read(File.join(app, "db", "schema.rb"))
+      out, status = holdfast(app, "check", "--here", "--suspect", '{says: "a note is kept", given: {appointment: {note: "late"}}, do: "x = appointment", expect: "x.note == \"late\""}')
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "refuted=1", out
+      assert_equal schema, File.read(File.join(app, "db", "schema.rb"))
+    end
+  end
+
   # RSpec's stub sits in front of a hook on the module, so a race could not
   # hold at a module method the suspicion stubs until the stub itself held.
   def test_a_race_holds_at_a_module_method_the_suspicion_stubs

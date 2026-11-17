@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Project setup runs the migrations the schema file does not have yet, after `db:schema:load`, and the hunt's databases get them too. Before, an app that commits a migration ahead of its schema file failed setup with `ActiveRecord::PendingMigrationError`. The migration does not rewrite the app's schema file.
 - The gem ships RBS signatures in `sig/generated/`, written by rbs-inline from the type comments in `lib/` and checked with Steep. It leaves out the signatures of the scripts that run inside an app's test process (`runtime/` and `sequences/`).
 - `holdfast run` no longer fails on a changed scope that splats a constant into `where` (`where(**OPEN)`); that scope names no column.
 - A pin is no longer drafted from a scope given as a block argument (`scope :open, &OPEN`): its row names no def found in place of failing.
