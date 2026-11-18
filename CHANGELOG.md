@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- The gem declares itself a [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive) companion in its metadata (`hyperdrive_targets: "*"`, `hyperdrive_artifacts: skill`). In a Rails app that bundles it, `bin/rails hyperdrive:init` installs the skill the gem ships to `.claude/skills/holdfast/SKILL.md`.
+
 - `holdfast run` and `holdfast check` read an uncommitted working tree without adding holdfast's own `.holdfast/` folder. Before, a database file a test dropped while the snapshot was taken (SQLite's `-shm`), or a checkout there, failed the run at `git add`.
 - The skill says how to sign in for a request and how to tell a row that only checked the sign-in guard (both sides refuse the same way), what to suspect around a callback the change adds (each action it lists; a record not found, unsaved, merged, deleted), and to start `holdfast run` in the background on a large app.
 - `holdfast run` compares base and head in an app that pins a json version other than Ruby's own, such as `json < 3`. Before, the reach recorder loaded Ruby's json ahead of the app's bundle, and both sides failed setup with "You have already activated json".

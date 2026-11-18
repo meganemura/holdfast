@@ -198,6 +198,9 @@ holdfast はアプリの `.holdfast/` と `spec/holdfast/` の下に書き込み
 `.holdfast/` はアプリの `.gitignore` に加えます。
 残すスペックはコミットします。
 
+**holdfast 0.3.0 以降**の gem はスキルを同梱し、[Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive) の companion としての導入に対応します。
+holdfast を bundle している Rails アプリでは、`bin/rails hyperdrive:init` がスキルを `.claude/skills/holdfast/SKILL.md` に入れます。
+
 各アプリは、そのディレクトリから作った自分専用のテスト用データベース名を `DATABASE_URL` で受け取ります。
 そのため、base と head、また一つのサーバー上の二つのアプリが、同じデータベースを共有しません。
 SQLite では、それぞれの側が `.holdfast/db/` の下に自分専用のファイルを受け取り、アプリ自身のテスト用データベースのファイルには書き込みません。
