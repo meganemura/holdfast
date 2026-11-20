@@ -44,9 +44,11 @@ end
 puts "preparing #{jobs} test databases (TEST_ENV_NUMBER=1..#{jobs})"
 jobs.times.map do |i|
   Thread.new do
-    # The same setup as Record::SIDE_SETUP: a migration the schema file lacks runs too.
+    # The same setup as Record::SIDE_SETUP and SERVER_SETUP: a migration the
+    # schema file lacks runs too, and a server's database starts dropped.
+    drop = ENV["SEQUENCES_DATABASE_URL"].to_s.match?(/\A(postgres|mysql2|trilogy)/) ? "db:drop " : ""
     log, status = Open3.capture2e(worker_env.(i).merge("RAILS_ENV" => "test"), "/bin/sh", "-c",
-                                  "bin/rails db:create db:schema:load && SCHEMA=/dev/null bin/rails db:migrate")
+                                  "bin/rails #{drop}db:create db:schema:load && SCHEMA=/dev/null bin/rails db:migrate")
     abort "database #{i + 1} failed:\n#{log}" unless status.success?
   end
 end.each(&:join)

@@ -160,9 +160,9 @@ holdfast writes under `.holdfast/` and `spec/holdfast/` in the app. Add `.holdfa
 
 **holdfast 0.3.0 and later** bundle the skill and offer [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive) companion installation. For Rails apps bundling holdfast, `bin/rails hyperdrive:init` installs it to `.claude/skills/holdfast/SKILL.md`.
 
-Each app gets its own test database names through `DATABASE_URL`, made from its directory, so base and head, and two apps on one server, do not share one. On SQLite, each side gets a file of its own under `.holdfast/db/`, and the app's own test database file is never written. The setup runs `bin/rails db:create db:schema:load`, then `bin/rails db:migrate` for a migration the schema file does not have yet. That migration does not rewrite the app's schema file.
+Each app gets its own test database names through `DATABASE_URL`, made from its directory, so base and head, and two apps on one server, do not share one. On SQLite, each side gets a file of its own under `.holdfast/db/`, and the app's own test database file is never written. The setup runs `bin/rails db:create db:schema:load` (on a database server, after `db:drop` of those databases), then `bin/rails db:migrate` for a migration the schema file does not have yet. That migration does not rewrite the app's schema file.
 
-Races and the hunt run on PostgreSQL and on SQLite. SQLite lets one connection write at a time: when a race holds an action that has already written in its open transaction, the other action waits for it, and the row says `the second waited on a lock`. MySQL is not tested.
+Races and the hunt run on PostgreSQL and on SQLite. SQLite lets one connection write at a time: when a race holds an action that has already written in its open transaction, the other action waits for it, and the row says `the second waited on a lock`. On MySQL, `holdfast check` has run on base and head, with a multi-database `database.yml` too; races and the hunt are not tested there.
 
 ## Limits
 

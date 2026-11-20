@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- `holdfast check` compares base and head on MySQL with a multi-database `database.yml` (`test: primary: ...`). Before, the side databases' `DATABASE_URL` had no user or password, because they were read from `test:` only, and base, whose checkout has no ignored `database.yml`, could not sign in. On a database server, setup also drops each side's database before it loads the schema, because MySQL cannot replace a table another table refers to.
 - The gem declares itself a [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive) companion in its metadata (`hyperdrive_targets: "*"`, `hyperdrive_artifacts: skill`). In a Rails app that bundles it, `bin/rails hyperdrive:init` installs the skill the gem ships to `.claude/skills/holdfast/SKILL.md`.
 
 - `holdfast run` and `holdfast check` read an uncommitted working tree without adding holdfast's own `.holdfast/` folder. Before, a database file a test dropped while the snapshot was taken (SQLite's `-shm`), or a checkout there, failed the run at `git add`.

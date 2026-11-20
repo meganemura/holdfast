@@ -204,14 +204,15 @@ holdfast を bundle している Rails アプリでは、`bin/rails hyperdrive:i
 各アプリは、そのディレクトリから作った自分専用のテスト用データベース名を `DATABASE_URL` で受け取ります。
 そのため、base と head、また一つのサーバー上の二つのアプリが、同じデータベースを共有しません。
 SQLite では、それぞれの側が `.holdfast/db/` の下に自分専用のファイルを受け取り、アプリ自身のテスト用データベースのファイルには書き込みません。
-セットアップは `bin/rails db:create db:schema:load` を実行し、スキーマファイルにまだないマイグレーションがあれば `bin/rails db:migrate` も実行します。
+セットアップは `bin/rails db:create db:schema:load` を実行し(データベースサーバーでは先にそのデータベースを `db:drop` します)、スキーマファイルにまだないマイグレーションがあれば `bin/rails db:migrate` も実行します。
 このマイグレーションでアプリのスキーマファイルは書き換えません。
 
 競合とバグ探しは PostgreSQL と SQLite で走ります。
 SQLite では、一度に書き込める接続は一つです。
 競合で止めたアクションが、開いたトランザクションの中ですでに書き込んでいると、もう一方のアクションはそれを待ちます。
 その行には `the second waited on a lock` と出ます。
-MySQL は試していません。
+MySQL では `holdfast check` が変更前と変更後の両方で動くことを確かめました(複数データベースの `database.yml` でも)。
+競合とハントは MySQL では試していません。
 
 ## 制限
 

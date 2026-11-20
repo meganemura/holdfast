@@ -16,6 +16,11 @@ module Holdfast
     # away from the tree, which may be the person's working tree.
     SIDE_SETUP: String
 
+    # On a database server the setup starts from a dropped database: a schema
+    # load cannot replace a table another table refers to on MySQL, which has
+    # no DROP ... CASCADE, and the databases are holdfast's own.
+    SERVER_SETUP: String
+
     attr_reader data: json
 
     # : (String) -> String

@@ -15,6 +15,10 @@ module Holdfast
     # its own CI runs both. SCHEMA sends the dump that follows a migration
     # away from the tree, which may be the person's working tree.
     SIDE_SETUP = "bin/rails db:create db:schema:load && SCHEMA=/dev/null bin/rails db:migrate" #: String
+    # On a database server the setup starts from a dropped database: a schema
+    # load cannot replace a table another table refers to on MySQL, which has
+    # no DROP ... CASCADE, and the databases are holdfast's own.
+    SERVER_SETUP = SIDE_SETUP.sub("bin/rails ", "bin/rails db:drop ") #: String
 
     attr_reader :data #: json
 
@@ -67,7 +71,7 @@ module Holdfast
         "database" => { "adapter" => adapter, "server" => server, "numbered" => test_section.include?("TEST_ENV_NUMBER"),
                         "url" => url }.compact,
         "env" => db_yml.scan(/ENV(?:\.fetch\(|\[)\s*["'](\w+)["']/).flatten.uniq - %w[TEST_ENV_NUMBER RAILS_ENV],
-        "side_setup" => url ? SIDE_SETUP : nil,
+        "side_setup" => if server then SERVER_SETUP elsif url then SIDE_SETUP end,
         "base_branch" => base_branch(root),
         "coverage" => COVERAGE.find { File.file?(File.join(root, _1)) }
       }
@@ -82,8 +86,11 @@ module Holdfast
       yml = YAML.safe_load(ERB.new(File.read(File.join(root, "config/database.yml"))).result, aliases: true) #: json
       none = {} #: json
       test = yml.fetch("test", none)
+      # A multi-database config nests each database's settings under its
+      # name; DATABASE_URL stands in for the primary one.
+      test = test["primary"] if test["primary"].is_a?(Hash)
       scheme = { "postgresql" => "postgres", "mysql2" => "mysql2", "trilogy" => "trilogy" }.fetch(adapter)
-      user = [test["username"], test["password"]].compact.join(":")
+      user = [test["username"], test["password"]].compact.map { ERB::Util.url_encode(_1.to_s) }.join(":")
       host = test["host"] || "localhost"
       name = "hf_#{File.basename(root).downcase.gsub(/[^a-z0-9]+/, "_")}_#{Digest::SHA1.hexdigest(root)[0, 6]}"
       "#{scheme}://#{"#{user}@" unless user.empty?}#{host}#{":#{test["port"]}" if test["port"]}/#{name}"
