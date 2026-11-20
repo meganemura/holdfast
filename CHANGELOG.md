@@ -2,7 +2,10 @@
 
 ## [Unreleased]
 
+- A suspicion that names `jobs` (or `jobs(X)`) holds the jobs its actions enqueue and lists each with its arguments, `wait`, concurrency `key` and `state`. On Solid Queue with a queue database for the test environment the jobs go to that queue, so the state is what Solid Queue did with each; otherwise the test adapter holds them. `run_jobs` in `do` runs the held jobs, whatever their schedule. The row lists the jobs it saw.
+- A suspicion that names `cache_files`, `cached(path)` or `Rails.cache` runs with caching on: pages cache under a folder of their own and Rails.cache is in memory, in place of the test environment's no caching. The row lists the cached pages.
 - `holdfast check` compares base and head on MySQL with a multi-database `database.yml` (`test: primary: ...`). Before, the side databases' `DATABASE_URL` had no user or password, because they were read from `test:` only, and base, whose checkout has no ignored `database.yml`, could not sign in. On a database server, setup also drops each side's database before it loads the schema, because MySQL cannot replace a table another table refers to.
+- `do` and `expect` read a given record with what only the built record held, such as the password its factory set. Before, `sign_in user` posted no password, so every signed-in request was turned away on both sides.
 - The gem declares itself a [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive) companion in its metadata (`hyperdrive_targets: "*"`, `hyperdrive_artifacts: skill`). In a Rails app that bundles it, `bin/rails hyperdrive:init` installs the skill the gem ships to `.claude/skills/holdfast/SKILL.md`.
 
 - `holdfast run` and `holdfast check` read an uncommitted working tree without adding holdfast's own `.holdfast/` folder. Before, a database file a test dropped while the snapshot was taken (SQLite's `-shm`), or a checkout there, failed the run at `git add`.

@@ -12,13 +12,16 @@ require "open3"
 
 class SkillExamplesTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
-  # What the clinic fixture does with each example: two defects on purpose,
+  # What the clinic fixture does with each example: two defects on purpose (one of them through a held job),
   # and a check-in that holds under a race.
   EXPECTED = {
     "a passed tentative appointment is charged a no-show fee" => "confirmed",
     "check-in between the sweep's load and its lock becomes a no-show" => "confirmed",
     "two desks checking in one appointment both succeed" => "refuted",
-    "a check-in hands back the appointment, checked in" => "refuted"
+    "a check-in hands back the appointment, checked in" => "refuted",
+    "a sweep scheduled for later still charges a passed tentative appointment" => "confirmed",
+    "two sweeps enqueued at once are held as two jobs" => "refuted",
+    "a count kept in Rails.cache reads back" => "refuted"
   }.freeze
 
   def self.examples = File.read(File.join(ROOT, "skills", "holdfast", "SKILL.md")).scan(/^```yaml\n(.*?)^```/m).map(&:first)

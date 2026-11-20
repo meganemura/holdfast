@@ -162,8 +162,13 @@ module HoldfastCheck
     # : () -> Hash[Symbol, untyped]
     def fresh: () -> Hash[Symbol, untyped]
 
+    # A record read again keeps what only the built one held, such as the
+    # `password` the factory set, so `sign_in user` can still post it.
     # : (untyped value) -> untyped
     def reload: (untyped value) -> untyped
+
+    # What a record learnt while it was built, not what it is.
+    KEPT_OUT: Array[Symbol]
 
     # : (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
     def method_missing: (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
@@ -177,11 +182,11 @@ module HoldfastCheck
   # last in a race), `results` and `errors` (one per action, in the order the
   # suspicion lists them), `calls(X, :verb)`, and everything the spec has.
   class Scope
-    @example: untyped
+    @calls: untyped
 
     @records: Hash[Symbol, untyped]
 
-    @calls: untyped
+    @example: untyped
 
     # : (untyped example, Hash[Symbol, untyped] records, ?result: untyped, ?error: Exception?, ?results: Array[untyped], ?errors: Array[Exception?], ?calls: Calls?) -> void
     def initialize: (untyped example, Hash[Symbol, untyped] records, ?result: untyped, ?error: Exception?, ?results: Array[untyped], ?errors: Array[Exception?], ?calls: Calls?) -> void
@@ -207,6 +212,18 @@ module HoldfastCheck
     # : (Module owner, String | Symbol verb) -> Array[Array[untyped]]
     def calls: (Module owner, String | Symbol verb) -> Array[Array[untyped]]
 
+    # : (?Module? klass) -> Array[Job]
+    def jobs: (?Module? klass) -> Array[Job]
+
+    # : () -> Array[Job]
+    def run_jobs: () -> Array[Job]
+
+    # : () -> Array[String]
+    def cache_files: () -> Array[String]
+
+    # : (String path) -> String?
+    def cached: (String path) -> String?
+
     # : (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
     def method_missing: (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
 
@@ -230,6 +247,129 @@ module HoldfastCheck
     # : (Module owner, String | Symbol verb) -> Array[Array[untyped]]
     def of: (Module owner, String | Symbol verb) -> Array[Array[untyped]]
   end
+
+  # One job an action enqueued, as the queue keeps it: its class, its
+  # arguments, how far ahead it is scheduled, its concurrency key, and what
+  # the queue did with it (scheduled, ready, blocked, finished).
+  class Job < Data
+    attr_reader job(): String
+
+    attr_reader args(): Array[untyped]
+
+    attr_reader wait(): Integer?
+
+    attr_reader key(): String?
+
+    attr_reader state(): String
+
+    def self.new: (String job, Array[untyped] args, Integer? wait, String? key, String state) -> instance
+                | (job: String, args: Array[untyped], wait: Integer?, key: String?, state: String) -> instance
+
+    def self.members: () -> [ :job, :args, :wait, :key, :state ]
+
+    def members: () -> [ :job, :args, :wait, :key, :state ]
+  end
+
+  class Job
+    # : () -> String
+    def inspect: () -> String
+
+    alias to_s inspect
+  end
+
+  # A suspicion that names `jobs` holds every job the actions enqueue in
+  # the queue in place of running it. The test adapter applies no
+  # concurrency limit and keeps no schedule, so on Solid Queue with a queue
+  # database for this environment the jobs go to that queue, and `jobs`
+  # reads them back with what Solid Queue did to each.
+  class Jobs
+    @adapter: untyped
+
+    @solid: bool
+
+    @since: Integer
+
+    @held: untyped
+
+    @ran: Array[Integer]
+
+    # : (Array[String] texts) -> bool
+    def self.wanted?: (Array[String] texts) -> bool
+
+    # Solid Queue's own tables, connected to the queue database when the app
+    # configures one for this environment and has not connected them itself.
+    # : () -> bool
+    def self.solid?: () -> bool
+
+    # : () -> void
+    def start: () -> void
+
+    # : () -> void
+    def stop: () -> void
+
+    # : () -> String
+    def where: () -> String
+
+    # : (?Module? klass) -> Array[Job]
+    def of: (?Module? klass) -> Array[Job]
+
+    # Runs each job held so far, and the jobs those enqueue, in the order
+    # they were enqueued, whatever their schedule says; each runs once. A
+    # job that raises ends the action with that error.
+    # : () -> Array[Job]
+    def run!: () -> Array[Job]
+
+    private
+
+    # : () -> Array[Job]
+    def solid: () -> Array[Job]
+
+    # : () -> Array[Job]
+    def held: () -> Array[Job]
+  end
+
+  # A suspicion that names `cache_files` or `Rails.cache` caches as
+  # production does: the test environment turns caching off, so a change to
+  # what is cached, or to what removes it, would show nothing. The actions
+  # run with caching on, pages cached under a folder of their own, and
+  # Rails.cache in memory; `cache_files` lists the cached pages by path.
+  class Caching
+    @was: [ bool, String?, untyped ]
+
+    @dir: String
+
+    # : (Array[String] texts) -> bool
+    def self.wanted?: (Array[String] texts) -> bool
+
+    # : () -> void
+    def start: () -> void
+
+    # : () -> void
+    def stop: () -> void
+
+    # : () -> Array[String]
+    def files: () -> Array[String]
+
+    # The cached page at +path+ (as `cache_files` names it), or nil.
+    # : (String path) -> String?
+    def read: (String path) -> String?
+  end
+
+  # @rbs self.@caching: Caching?
+  # : () -> Caching?
+  def self.caching: () -> Caching?
+
+  # : (Caching? watch) -> void
+  def self.caching=: (Caching? watch) -> void
+
+  # The jobs of the suspicion that runs now, for `jobs(X)` in `do` and in
+  # `expect`.
+  # @rbs self.@jobs: Jobs?
+  # : () -> Jobs?
+  def self.jobs: () -> Jobs?
+
+  # : (Jobs? watch) -> void
+  def self.jobs=: (Jobs? watch) -> void
 
   # An action or an expectation line, as the suspicion wrote it. +parts+ are
   # the operands of `a && b` (or `a || b`), each [text, block, observe].

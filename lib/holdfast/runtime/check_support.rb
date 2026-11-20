@@ -7,6 +7,7 @@
 # HOLDFAST_CHECK_OUT is set it also writes what it saw there as JSON, so
 # holdfast can tell a failed expectation from a world it could not build.
 require "json"
+require "tmpdir"
 
 module HoldfastCheck
   # A spec includes this module, so these come from the example it runs in.
@@ -322,8 +323,19 @@ module HoldfastCheck
 
     #: () -> Hash[Symbol, untyped]
     def fresh = @records.transform_values { |r| r.is_a?(Array) ? r.map { reload(_1) } : reload(r) }
+    # A record read again keeps what only the built one held, such as the
+    # `password` the factory set, so `sign_in user` can still post it.
     #: (untyped value) -> untyped
-    def reload(value) = value.is_a?(ActiveRecord::Base) && value.persisted? ? (value.class.unscoped.find_by(id: value.id) || value) : value
+    def reload(value)
+      return value unless value.is_a?(ActiveRecord::Base) && value.persisted?
+
+      found = value.class.unscoped.find_by(id: value.id) or return value
+      (value.instance_variables - found.instance_variables - KEPT_OUT).each { found.instance_variable_set(_1, value.instance_variable_get(_1)) unless _1.start_with?("@_") }
+      found
+    end
+
+    # What a record learnt while it was built, not what it is.
+    KEPT_OUT = %i[@errors @validation_context @marked_for_destruction @destroyed_by_association].freeze #: Array[Symbol]
     #: (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
     def method_missing(name, *args, **kw, &blk) = @records.key?(name) && args.empty? ? @records[name] : @example.send(name, *args, **kw, &blk)
     #: (Symbol name, ?bool all) -> bool
@@ -360,6 +372,14 @@ module HoldfastCheck
 
     #: (Module owner, String | Symbol verb) -> Array[Array[untyped]]
     def calls(owner, verb) = @calls.of(owner, verb)
+    #: (?Module? klass) -> Array[Job]
+    def jobs(klass = nil) = HoldfastCheck.jobs&.of(klass) || []
+    #: () -> Array[Job]
+    def run_jobs = HoldfastCheck.jobs&.run! || []
+    #: () -> Array[String]
+    def cache_files = HoldfastCheck.caching&.files || []
+    #: (String path) -> String?
+    def cached(path) = HoldfastCheck.caching&.read(path)
     #: (Symbol name, *untyped args, **untyped kw) ?{ (*untyped) -> untyped } -> untyped
     def method_missing(name, *args, **kw, &blk) = @records.key?(name) && args.empty? ? @records[name] : @example.send(name, *args, **kw, &blk)
     #: (Symbol name, ?bool all) -> bool
@@ -396,6 +416,185 @@ module HoldfastCheck
 
     #: (Module owner, String | Symbol verb) -> Array[Array[untyped]]
     def of(owner, verb) = @seen[[owner.name, verb.to_sym]]
+  end
+
+  # One job an action enqueued, as the queue keeps it: its class, its
+  # arguments, how far ahead it is scheduled, its concurrency key, and what
+  # the queue did with it (scheduled, ready, blocked, finished).
+  Job = Data.define(
+    :job, #: String
+    :args, #: Array[untyped]
+    :wait, #: Integer?
+    :key, #: String?
+    :state #: String
+  )
+
+  class Job
+    #: () -> String
+    def inspect = "#{job}(#{args.map(&:inspect).join(", ")})#{" in #{wait}s" if wait&.positive?}#{" key #{key}" if key} #{state}"
+    alias to_s inspect
+  end
+
+  # A suspicion that names `jobs` holds every job the actions enqueue in
+  # the queue in place of running it. The test adapter applies no
+  # concurrency limit and keeps no schedule, so on Solid Queue with a queue
+  # database for this environment the jobs go to that queue, and `jobs`
+  # reads them back with what Solid Queue did to each.
+  class Jobs
+    # @rbs @adapter: untyped
+    # @rbs @solid: bool
+    # @rbs @since: Integer
+    # @rbs @held: untyped
+    # @rbs @ran: Array[Integer]
+
+    #: (Array[String] texts) -> bool
+    def self.wanted?(texts) = texts.any? { _1.match?(/\b(?:run_)?jobs\b/) }
+
+    # Solid Queue's own tables, connected to the queue database when the app
+    # configures one for this environment and has not connected them itself.
+    #: () -> bool
+    def self.solid?
+      return @solid unless @solid.nil?
+
+      @solid = defined?(::SolidQueue::Job) && (::SolidQueue::Job.table_exists? || begin
+        config = ActiveRecord::Base.configurations.configs_for(env_name: Rails.env, name: "queue")
+        config && ::SolidQueue::Record.connects_to(database: { writing: :queue }) && ::SolidQueue::Job.table_exists?
+      end) ? true : false
+    rescue StandardError
+      @solid = false
+    end
+
+    #: () -> void
+    def start
+      @adapter = ActiveJob::Base.queue_adapter
+      @solid = Jobs.solid?
+      if @solid
+        @since = ::SolidQueue::Job.maximum(:id) || 0
+        ActiveJob::Base.queue_adapter = :solid_queue
+      else
+        @held = ActiveJob::QueueAdapters::TestAdapter.new
+        ActiveJob::Base.queue_adapter = @held
+      end
+    end
+
+    #: () -> void
+    def stop = ActiveJob::Base.queue_adapter = @adapter
+
+    #: () -> String
+    def where = @solid ? "Solid Queue (queue database)" : "held, not run (test adapter: no concurrency limits, no schedule)"
+
+    #: (?Module? klass) -> Array[Job]
+    def of(klass = nil)
+      all = @solid ? solid : held
+      klass ? all.select { _1.job == klass.name } : all
+    end
+
+    # Runs each job held so far, and the jobs those enqueue, in the order
+    # they were enqueued, whatever their schedule says; each runs once. A
+    # job that raises ends the action with that error.
+    #: () -> Array[Job]
+    def run!
+      @ran ||= [] #: Array[Integer]
+      100.times do
+        pending = @solid ? ::SolidQueue::Job.where("id > ?", @since).where.not(id: @ran).order(:id).to_a : (0...@held.enqueued_jobs.size).to_a - @ran
+        break if pending.empty?
+
+        pending.each do |entry|
+          @ran << (@solid ? entry.id : entry)
+          if @solid
+            ActiveJob::Base.execute(entry.arguments)
+          else
+            h = @held.enqueued_jobs[entry]
+            (h[:job] || Object.const_get(h["job_class"])).new(*ActiveJob::Arguments.deserialize(h[:args] || [])).perform_now
+          end
+        end
+      end
+      of
+    end
+
+    private
+
+    #: () -> Array[Job]
+    def solid
+      ::SolidQueue::Job.where("id > ?", @since).order(:id).map do |row|
+        args = begin
+          ActiveJob::Arguments.deserialize(row.arguments["arguments"])
+        rescue StandardError
+          row.arguments["arguments"]
+        end
+        state = Array(@ran).include?(row.id) ? "ran" : %w[scheduled ready blocked claimed failed].find { row.public_send(:"#{_1}_execution").present? } || (row.finished_at ? "finished" : "pending")
+        wait = (row.scheduled_at - Time.current).round if row.scheduled_at
+        Job.new(job: row.class_name, args:, wait:, key: row.concurrency_key, state:)
+      end
+    end
+
+    #: () -> Array[Job]
+    def held
+      @held.enqueued_jobs.each_with_index.map do |h, i|
+        klass = h[:job] || h["job_class"]&.then { Object.const_get(_1) }
+        args = h[:args] ? ActiveJob::Arguments.deserialize(h[:args]) : [] #: Array[untyped]
+        job = klass.new(*args)
+        key = job.concurrency_key if job.respond_to?(:concurrency_key) && klass.respond_to?(:concurrency_limited?) && klass.concurrency_limited?
+        wait = (Time.at(h[:at]) - Time.current).round if h[:at]
+        Job.new(job: klass.name, args:, wait:, key:, state: Array(@ran).include?(i) ? "ran" : h[:at] ? "scheduled" : "ready")
+      end
+    end
+  end
+
+  # A suspicion that names `cache_files` or `Rails.cache` caches as
+  # production does: the test environment turns caching off, so a change to
+  # what is cached, or to what removes it, would show nothing. The actions
+  # run with caching on, pages cached under a folder of their own, and
+  # Rails.cache in memory; `cache_files` lists the cached pages by path.
+  class Caching
+    # @rbs @was: [bool, String?, untyped]
+    # @rbs @dir: String
+
+    #: (Array[String] texts) -> bool
+    def self.wanted?(texts) = texts.any? { _1.match?(/\bcache_files\b|\bRails\.cache\b/) }
+
+    #: () -> void
+    def start
+      base = ActionController::Base
+      @was = [base.perform_caching, (base.page_cache_directory if base.respond_to?(:page_cache_directory)), Rails.cache]
+      @dir = Dir.mktmpdir("holdfast-cache")
+      base.perform_caching = true
+      base.page_cache_directory = @dir if base.respond_to?(:page_cache_directory=)
+      Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    end
+
+    #: () -> void
+    def stop
+      base = ActionController::Base
+      base.perform_caching = @was[0]
+      base.page_cache_directory = @was[1] if base.respond_to?(:page_cache_directory=)
+      Rails.cache = @was[2]
+    end
+
+    #: () -> Array[String]
+    def files = Dir.glob("**/*", File::FNM_DOTMATCH, base: @dir).select { File.file?(File.join(@dir, _1)) }.sort.map { "/#{_1}" }
+
+    # The cached page at +path+ (as `cache_files` names it), or nil.
+    #: (String path) -> String?
+    def read(path) = File.file?(File.join(@dir, path)) ? File.read(File.join(@dir, path)) : nil
+  end
+
+  # @rbs self.@caching: Caching?
+  #: () -> Caching?
+  def self.caching = @caching
+  #: (Caching? watch) -> void
+  def self.caching=(watch)
+    @caching = watch
+  end
+
+  # The jobs of the suspicion that runs now, for `jobs(X)` in `do` and in
+  # `expect`.
+  # @rbs self.@jobs: Jobs?
+  #: () -> Jobs?
+  def self.jobs = @jobs
+  #: (Jobs? watch) -> void
+  def self.jobs=(watch)
+    @jobs = watch
   end
 
   # An action or an expectation line, as the suspicion wrote it. +parts+ are
@@ -516,11 +715,19 @@ module HoldfastCheck
     calls.watch
     HoldfastCheck.watch_outside_calls if pause
     called = [] #: Array[String]
-    outcomes = if pause
-                 holdfast_interleave(world, acts, pause, calls)
-               else
-                 acts.map { |a| holdfast_traced(trace ? called : nil) { holdfast_step(world.fresh, a, calls, errors:) } }
-               end
+    jobs = Jobs.new.tap(&:start) if Jobs.wanted?(acts.map(&:text) + expects.map(&:text))
+    HoldfastCheck.jobs = jobs
+    caching = Caching.new.tap(&:start) if Caching.wanted?(acts.map(&:text) + expects.map(&:text))
+    HoldfastCheck.caching = caching
+    outcomes = begin
+      if pause
+        holdfast_interleave(world, acts, pause, calls)
+      else
+        acts.map { |a| holdfast_traced(trace ? called : nil) { holdfast_step(world.fresh, a, calls, errors:) } }
+      end
+    ensure
+      jobs&.stop
+    end
     holdfast_reached!(expects)
     results = Array.new(acts.size)
     errs = Array.new(acts.size)
@@ -535,7 +742,11 @@ module HoldfastCheck
     why = checked.reject { _1["holds"] }.map { "#{_1["expect"]} does not hold#{": #{_1["failed"].join("; ")}" if _1["failed"]}#{" (observed #{_1["observed"]})" if _1["observed"]}" }.join("; ")
     { "result" => why.empty? ? "refuted" : "confirmed", "why" => (why unless why.empty?),
       "outcomes" => outcomes.map { _1[:shown] }, "ends" => results.zip(errs).map { |r, e| e ? "raised #{e.class}" : holdfast_show(r) }, "paused" => outcomes.first[:paused], "held_at" => outcomes.first[:held_at],
-      "absent" => outcomes.filter_map { _1[:absent] }.first, "checks" => checked, "called" => (called.uniq if trace), "given_ids" => given_ids }.compact
+      "absent" => outcomes.filter_map { _1[:absent] }.first, "checks" => checked, "called" => (called.uniq if trace), "given_ids" => given_ids, "queue" => jobs&.where, "queued" => jobs&.of&.first(10)&.map(&:inspect), "cached" => caching&.files&.first(20) }.compact
+  ensure
+    # `expect` reads the cache as the actions left it, so caching ends here.
+    HoldfastCheck.caching&.stop
+    HoldfastCheck.caching = nil
   end
 
   # A `do` or an expectation in Ruby that names `calls(X, :verb)` counts

@@ -509,6 +509,8 @@ module Holdfast
       head = side_result(reports["head"], s)
       evidence = [] #: Array[String]
       evidence << "pause points tried: #{head["pauses"].join("; ")}" if head["pauses"]
+      evidence << "jobs: #{head["queue"]}: #{Array(head["queued"]).then { _1.empty? ? "none enqueued" : _1.join("; ") }}" if head["queue"]
+      evidence << "cached pages: #{Array(head["cached"]).then { _1.empty? ? "none" : _1.join(", ") }}" if head.key?("cached")
       Array(head["orders"]).sort_by { |label, _| label == head["order"] ? 0 : 1 }.each { |label, run| evidence << "#{label}: #{run["result"] == "could_not_run" ? "could not run: #{run["error"]}" : "#{Array(run["outcomes"]).join("; ")}#{"; #{run["paused"]}" if run["paused"]}; #{Array(run["checks"]).map { check_line(_1) }.join("; ")}"}" }
       evidence += Array(head["outcomes"]).map { "ran: #{_1}" } unless head["orders"]
       evidence += Array(head["checks"]).map { check_line(_1) } unless head["orders"]

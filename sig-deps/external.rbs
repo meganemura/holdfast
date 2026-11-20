@@ -51,6 +51,7 @@ module ActiveRecord
     def self.unscoped: () -> untyped
     def self.column_names: () -> Array[String]
     def self.abstract_class?: () -> bool
+    def self.configurations: () -> untyped
     def id: () -> untyped
     def persisted?: () -> bool
     def has_attribute?: (untyped) -> bool
@@ -89,10 +90,46 @@ end
 module ActiveJob
   class Base
     def self.descendants: () -> Array[untyped]
+    def self.queue_adapter: () -> untyped
+    def self.queue_adapter=: (untyped) -> untyped
+    def self.execute: (untyped) -> untyped
+  end
+  module Arguments
+    def self.deserialize: (untyped) -> Array[untyped]
+  end
+  module QueueAdapters
+    class TestAdapter
+      def enqueued_jobs: () -> Array[Hash[untyped, untyped]]
+    end
+  end
+end
+
+# Solid Queue's tables, read only when the app has the gem.
+module SolidQueue
+  class Record
+    def self.connects_to: (**untyped) -> untyped
+  end
+  class Job
+    def self.table_exists?: () -> bool
+    def self.maximum: (Symbol) -> untyped
+    def self.where: (*untyped) -> untyped
+  end
+end
+
+module ActiveSupport
+  module Cache
+    class MemoryStore
+    end
   end
 end
 
 module ActionController
+  class Base
+    def self.perform_caching: () -> bool
+    def self.perform_caching=: (bool) -> bool
+    def self.page_cache_directory: () -> String?
+    def self.page_cache_directory=: (String?) -> String?
+  end
   class RoutingError < StandardError
   end
   module HttpAuthentication
@@ -117,6 +154,8 @@ module Rails
   def self.application: () -> untyped
   def self.root: () -> untyped
   def self.env: () -> untyped
+  def self.cache: () -> untyped
+  def self.cache=: (untyped) -> untyped
 end
 
 module RSpec

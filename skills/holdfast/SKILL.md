@@ -7,7 +7,7 @@ description: Run what you suspect instead of leaving it "read only". In a Ruby o
 
 ## Setup
 
-Add `gem "holdfast", require: false` to the app's `:test` group and run `bundle install`; run every command below as `bundle exec holdfast ...` from the app root. jitcatch and branchout, which `holdfast run` uses on a change, come with it. The app needs RSpec, FactoryBot and a test database on PostgreSQL or SQLite; races and the hunt run on both (MySQL is untested). SQLite lets one connection write at a time, so a race that holds an action after it wrote in its open transaction makes the other wait, and the row says `the second waited on a lock`.
+Add `gem "holdfast", require: false` to the app's `:test` group and run `bundle install`; run every command below as `bundle exec holdfast ...` from the app root. jitcatch and branchout, which `holdfast run` uses on a change, come with it. The app needs RSpec, FactoryBot and a test database on PostgreSQL or SQLite; races and the hunt run on both. On MySQL (trilogy or mysql2), `holdfast check` has run on base and head; races and the hunt are untested there. SQLite lets one connection write at a time, so a race that holds an action after it wrote in its open transaction makes the other wait, and the row says `the second waited on a lock`.
 
 ## The loop: read, suspect, check, keep
 
@@ -42,6 +42,30 @@ Add `gem "holdfast", require: false` to the app's `:test` group and run `bundle 
 A request as a signed-in user signs in the way the app's own request specs do; read their helper first. Add a part to `expect` that shows the action ran (a record it changed, or the status it answers when it works). When base and head refuse the same way (a 400, 401 or a redirect to the login page), the row checked the guard and not the change: fix the sign-in and run again.
 
 What to suspect around a callback the change adds (`after_action`, `after_save`, a job it enqueues): run it once for each action its `only:` lists, and with each record it can meet: none found, unsaved (a preview, a failed create), merged or moved, and deleted.
+
+The test environment runs no queue and caches nothing, so a change to a job's schedule or concurrency limit, or to what a cache keeps, shows nothing in a plain spec; what Solid Queue or a page cache does with it is a guess until it runs. Name them in the suspicion:
+
+- `jobs` (or `jobs(X)`) holds every job the actions enqueue in place of running it, and lists each with its arguments, `wait`, concurrency `key` and `state`. With Solid Queue and a queue database for the test environment, the jobs go to that queue and `state` is what Solid Queue did with each (`scheduled`, `ready`, `blocked`, `finished` for one it discarded); otherwise the test adapter holds them and applies no limit, and the row says so. `run_jobs` in `do` runs each held job, and the jobs those enqueue, whatever their schedule.
+- `cache_files`, `cached(path)` or `Rails.cache` runs the actions with caching on: pages cache under a folder of their own, and Rails.cache is in memory. `cache_files` lists the cached pages by path.
+
+The row lists the jobs and the cached pages it saw.
+
+```yaml
+- says: a sweep scheduled for later still charges a passed tentative appointment
+  given: {appointment: {status: tentative, starts_at: -1h}}
+  do: NoShowSweepJob.set(wait: 1.hour).perform_later; run_jobs
+  expect: no PaymentGateway charge
+- says: two sweeps enqueued at once are held as two jobs
+  given: {}
+  do: 2.times { NoShowSweepJob.perform_later }
+  expect: jobs(NoShowSweepJob).map(&:state) == ["ready", "ready"]
+- says: a count kept in Rails.cache reads back
+  given: {}
+  do: Rails.cache.write("sweeps", 1)
+  expect: Rails.cache.read("sweeps") == 1
+```
+
+What to suspect around a cache the change writes or clears: request the page under every path that reaches the same record (no slug, an old slug, another format), then change, delete or merge the record, `run_jobs`, and check that no cached page still shows the old state. Around a job with a delay or a concurrency limit: run the action that enqueues it two or three times and count what `jobs` holds; around two jobs with limits, compare their `key`.
 
 What to suspect for a race: a lock taken on a different row than the one written (two members booking one room each lock their own member row); a read before the lock (a status or a total read, then `with_lock`); an absolute write after a slow call (`attempts = notice.attempts + 1`, a courier call, then `update!(attempts:)`); check-then-act with no unique index under it (`exists?` then `create!`). Write the two actions and the end no serial order allows; leave `pause` out.
 
