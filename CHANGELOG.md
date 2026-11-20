@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Commands in one app take turns. A `holdfast check` started while `holdfast run` loaded the test databases dropped tables under it, and both setups failed (a MySQL duplicate key, a table that does not exist). The second command now says `another holdfast command runs in this app (pid N, since T); this one starts when it ends` and waits.
+- The boot test that setup runs is the smallest committed test. Before, an uncommitted spec the agent was writing could be picked, and a failing one failed setup for every later command.
+- The side setup of `holdfast run` gets ten minutes when the installed jitcatch takes `setup_timeout`, apart from the minute each test file gets. A schema load on a busy machine timed out at 60 s, and every row came back unchecked.
+- The skill says what to suspect around text that depends on who views it, added to a page that is cached: request it as one viewer, then as another and logged out.
 - A suspicion that names `jobs` (or `jobs(X)`) holds the jobs its actions enqueue and lists each with its arguments, `wait`, concurrency `key` and `state`. On Solid Queue with a queue database for the test environment the jobs go to that queue, so the state is what Solid Queue did with each; otherwise the test adapter holds them. `run_jobs` in `do` runs the held jobs, whatever their schedule. The row lists the jobs it saw.
 - A suspicion that names `cache_files`, `cached(path)` or `Rails.cache` runs with caching on: pages cache under a folder of their own and Rails.cache is in memory, in place of the test environment's no caching. The row lists the cached pages.
 - `holdfast check` compares base and head on MySQL with a multi-database `database.yml` (`test: primary: ...`). Before, the side databases' `DATABASE_URL` had no user or password, because they were read from `test:` only, and base, whose checkout has no ignored `database.yml`, could not sign in. On a database server, setup also drops each side's database before it loads the schema, because MySQL cannot replace a table another table refers to.

@@ -158,6 +158,17 @@ module Holdfast
         hunks.flat_map { |start, count| (start.to_i...(start.to_i + (count || 1).to_i)).to_a }
       end
 
+      # A schema load on a busy machine took longer than the minute a test
+      # file gets, and every row of the run came back unchecked. A jitcatch
+      # that limits its setup apart gets ten minutes for it.
+      SETUP_SECONDS = 600 #: Integer
+
+      #: () -> Hash[Symbol, Integer]
+      def self.setup_limit
+        takes = JitCatch::Runner.instance_method(:initialize).parameters.any? { _2 == :setup_timeout }
+        takes ? { setup_timeout: SETUP_SECONDS } : {}
+      end
+
       # The outcomes of one chunk of tests, or none and why the setup failed.
       #: (Change change, Record record, Array[Source] chunk, String dir, String reach_dir, ?Array[String] values) -> [Array[Outcome], String?]
       def self.compare(change, record, chunk, dir, reach_dir, values = [])
@@ -171,7 +182,8 @@ module Holdfast
         sqlite = record.database_url.to_s.start_with?("sqlite3:")
         ENV["DATABASE_URL"] = sqlite ? "sqlite3:#{Holdfast.dir(".")}/db/diff" : record.database_url if record.database_url
         doc = JitCatch::Assessor.apply(JitCatch::Runner.run(change.root, change.base, change.head, dir, env: env_names.uniq,
-                                                            setup: record.side_setup, timeout: 60, number_database_url: !record.database_url.nil? && !sqlite))
+                                                            setup: record.side_setup, timeout: 60, number_database_url: !record.database_url.nil? && !sqlite,
+                                                            **setup_limit))
         by_path = chunk.to_h { [_1.path, _1] }
         starts = doc["tests"].group_by { _1["file"] }.transform_values { |ts| ts.filter_map { _1["line"] }.sort }
         outcomes = doc["tests"].map do |test|

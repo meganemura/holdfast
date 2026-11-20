@@ -58,6 +58,8 @@ module Holdfast
     # : (String) -> String
     def self.base_branch: (String) -> String
 
+    # A committed test only: a spec the agent wrote and left untracked, which
+    # may fail on purpose, failed the boot and with it every later command.
     # : (String root, String framework) -> String?
     def self.smallest_test: (String root, String framework) -> String?
 

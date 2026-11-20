@@ -60,9 +60,9 @@ module Holdfast
       end.parse(argv)
       Dir.chdir(opts[:repo]) do
         case args.shift
-        when "run" then run(opts)
+        when "run" then one_at_a_time(Dir.pwd) { run(opts) }
         when "show" then show
-        when "check" then check(opts, args)
+        when "check" then one_at_a_time(Dir.pwd) { check(opts, args) }
         else
           $stderr.puts USAGE
           1
@@ -71,6 +71,33 @@ module Holdfast
     rescue OptionParser::ParseError, Holdfast::Error, *Tools.errors => e
       $stderr.puts "holdfast: #{e.message}"
       1
+    end
+
+    # Every command in one app learns the same record and loads the same
+    # numbered test databases. A check started while a run loaded them
+    # dropped tables under it, and both setups failed (a MySQL duplicate key,
+    # a table that does not exist), so the second command waits its turn.
+    # A holdfast the command starts itself runs inside the turn it holds.
+    #: (String root) { () -> Integer } -> Integer
+    def self.one_at_a_time(root)
+      return yield if ENV["HOLDFAST_TURN"] == File.expand_path(root)
+
+      FileUtils.mkdir_p(Holdfast.dir(root))
+      File.open(File.join(Holdfast.dir(root), "turn.lock"), File::RDWR | File::CREAT) do |file|
+        unless file.flock(File::LOCK_EX | File::LOCK_NB)
+          holder = file.read.strip
+          $stderr.puts "holdfast: another holdfast command runs in this app#{" (#{holder})" unless holder.empty?}; this one starts when it ends"
+          file.flock(File::LOCK_EX)
+        end
+        file.rewind
+        file.truncate(0)
+        file.write("pid #{Process.pid}, since #{Time.now.utc.iso8601}")
+        file.flush
+        ENV["HOLDFAST_TURN"] = File.expand_path(root)
+        yield
+      ensure
+        ENV.delete("HOLDFAST_TURN")
+      end
     end
 
     #: (options) -> Integer

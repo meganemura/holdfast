@@ -122,10 +122,15 @@ module Holdfast
       %w[main master].find { system("git", "rev-parse", "--verify", "--quiet", _1, chdir: root, out: File::NULL) } || "HEAD"
     end
 
+    # A committed test only: a spec the agent wrote and left untracked, which
+    # may fail on purpose, failed the boot and with it every later command.
     #: (String root, String framework) -> String?
     def self.smallest_test(root, framework)
       glob = framework == "rspec" ? "spec/**/*_spec.rb" : "test/**/*_test.rb"
-      Dir.glob(glob, base: root).min_by { File.size(File.join(root, _1)) }
+      tracked, status = Open3.capture2("git", "ls-files", "-z", "--", glob.split("/").first, chdir: root, err: File::NULL)
+      files = Dir.glob(glob, base: root)
+      files &= tracked.split("\0") if status.success? && !tracked.empty?
+      files.min_by { File.size(File.join(root, _1)) }
     end
 
     #: (String root, String name, String command, Hash[String, String] extra_env) -> json

@@ -121,6 +121,14 @@ module Holdfast
       # : (Change change, String file) -> Array[Integer]
       def self.edited_lines: (Change change, String file) -> Array[Integer]
 
+      # A schema load on a busy machine took longer than the minute a test
+      # file gets, and every row of the run came back unchecked. A jitcatch
+      # that limits its setup apart gets ten minutes for it.
+      SETUP_SECONDS: Integer
+
+      # : () -> Hash[Symbol, Integer]
+      def self.setup_limit: () -> Hash[Symbol, Integer]
+
       # The outcomes of one chunk of tests, or none and why the setup failed.
       # : (Change change, Record record, Array[Source] chunk, String dir, String reach_dir, ?Array[String] values) -> [Array[Outcome], String?]
       def self.compare: (Change change, Record record, Array[Source] chunk, String dir, String reach_dir, ?Array[String] values) -> [ Array[Outcome], String? ]

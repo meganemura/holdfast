@@ -19,6 +19,14 @@ module Holdfast
     # : (Array[String]) -> Integer
     def self.start: (Array[String]) -> Integer
 
+    # Every command in one app learns the same record and loads the same
+    # numbered test databases. A check started while a run loaded them
+    # dropped tables under it, and both setups failed (a MySQL duplicate key,
+    # a table that does not exist), so the second command waits its turn.
+    # A holdfast the command starts itself runs inside the turn it holds.
+    # : (String root) { () -> Integer } -> Integer
+    def self.one_at_a_time: (String root) { () -> Integer } -> Integer
+
     # : (options) -> Integer
     def self.run: (options) -> Integer
 
